@@ -2,7 +2,7 @@ const saleService = require("../services/sale.service");
 
 async function recordSale(req, res, next) {
   try {
-    const result = await saleService.recordSale(req.body || {});
+    const result = await saleService.recordSale(req.body || {}, req.user.store_id);
     return res.status(result.httpStatus).json(result.body);
   } catch (error) {
     return next(error);
@@ -12,7 +12,7 @@ async function recordSale(req, res, next) {
 async function listSales(req, res, next) {
   try {
     const options = {
-      store_id: req.query.store_id || undefined,
+      store_id: req.user.store_id,
       range: req.query.range || req.query.filter || "all",
       limit: req.query.limit ? Number(req.query.limit) : 50,
       offset: req.query.offset ? Number(req.query.offset) : 0
@@ -27,7 +27,7 @@ async function listSales(req, res, next) {
 async function getSalesSummary(req, res, next) {
   try {
     const options = {
-      store_id: req.query.store_id || undefined,
+      store_id: req.user.store_id,
       range: req.query.range || req.query.filter || "today"
     };
     const summary = await saleService.getSummary(options);

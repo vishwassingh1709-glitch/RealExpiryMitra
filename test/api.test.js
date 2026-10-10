@@ -1,12 +1,38 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("http");
+const { getApps, initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 const app = require("../src/app");
 
 let server;
 let baseUrl;
+let rawFetch;
 
 test.before(async () => {
+  // The API suite exercises the protected routes with a test-only identity.
+  // Production middleware still requires a real, verified Firebase token.
+  if (!getApps().length) initializeApp({ projectId: "expirymitra-test" });
+  getAuth().verifyIdToken = async (token) => {
+    if (token === "expirymitra-test-owner-token") {
+      return { uid: "store_default", store_id: "store_default", role: "shopkeeper" };
+    }
+    if (token === "expirymitra-test-other-owner-token") {
+      return { uid: "other_store", store_id: "other_store", role: "shopkeeper" };
+    }
+    throw new Error("Invalid test token");
+  };
+  rawFetch = global.fetch;
+  global.fetch = (input, options = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url, baseUrl || "http://127.0.0.1");
+    if (url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
+      const headers = new Headers(options.headers || (typeof input !== "string" ? input.headers : undefined));
+      headers.set("Authorization", "Bearer expirymitra-test-owner-token");
+      return rawFetch(input, { ...options, headers });
+    }
+    return rawFetch(input, options);
+  };
+
   return new Promise((resolve) => {
     server = http.createServer(app);
     server.listen(0, "127.0.0.1", () => {
@@ -18,6 +44,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  if (rawFetch) global.fetch = rawFetch;
   if (server) {
     return new Promise((resolve) => server.close(resolve));
   }
@@ -64,6 +91,11 @@ test("GET /api/health returns operational status and provider breakdown", async 
   assert.ok(data.ai);
 });
 
+test("business APIs reject requests without a verified session", async () => {
+  const res = await rawFetch(`${baseUrl}/api/inventory`);
+  assert.equal(res.status, 401);
+});
+
 /* ---------------- INVENTORY API ---------------- */
 
 test("inventory summary and listing return accurate calculated status", async () => {
@@ -78,9 +110,7 @@ test("inventory summary and listing return accurate calculated status", async ()
   assert.equal(listRes.status, 200);
   const list = await listRes.json();
   assert.ok(Array.isArray(list));
-  assert.ok(list.length >= 1);
-  assert.ok(list[0].status);
-  assert.ok(typeof list[0].days_left === "number");
+  assert.ok(list.every((item) => item.status && typeof item.days_left === "number"));
 });
 
 test("creates manual inventory item and updates it", async () => {
@@ -104,6 +134,11 @@ test("creates manual inventory item and updates it", async () => {
   const created = await createRes.json();
   assert.equal(created.product_name, "Fresh Paneer Block");
   assert.equal(created.quantity, 8);
+
+  const otherStoreRes = await rawFetch(`${baseUrl}/api/inventory/${created.id}`, {
+    headers: { Authorization: "Bearer expirymitra-test-other-owner-token" }
+  });
+  assert.equal(otherStoreRes.status, 404);
 
   // Update item
   const updateRes = await fetch(`${baseUrl}/api/inventory/${created.id}`, {

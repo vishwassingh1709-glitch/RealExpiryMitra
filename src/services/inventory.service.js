@@ -56,7 +56,7 @@ function normalizedQuantity(value) {
 /**
  * Saves a new inventory item with metadata.
  */
-async function create(data) {
+async function create(data, storeId = "store_default") {
   const quantity = normalizedQuantity(data.quantity) || 1;
   const barcode = String(data.barcode || "").trim();
   const productName = String(data.product_name || "").trim();
@@ -71,6 +71,7 @@ async function create(data) {
     mfg_date: data.mfg_date || null,
     expiry_date: data.expiry_date,
     quantity,
+    store_id: storeId,
     confidence: typeof data.confidence === "number" ? data.confidence : null,
     source: data.source || "ocr",
     review_status: data.review_status || "confirmed",
@@ -88,13 +89,13 @@ async function create(data) {
     }).catch((err) => console.warn("[Product Catalog save error]", err.message));
   }
 
-  return repo.save(item);
+  return repo.save(item, storeId);
 }
 
 /**
  * Manual inventory entry handler.
  */
-async function createManual(body = {}) {
+async function createManual(body = {}, storeId = "store_default") {
   const barcode = String(body.barcode || "").trim();
   const productName = String(body.product_name || "").trim();
   const expiryDate = String(body.expiry_date || "").trim();
@@ -132,7 +133,7 @@ async function createManual(body = {}) {
     confidence: null,
     source: "manual",
     review_status: "confirmed"
-  });
+  }, storeId);
 
   return { httpStatus: 201, body: computed(item) };
 }
@@ -140,13 +141,13 @@ async function createManual(body = {}) {
 /**
  * Confirms and persists an inventory item after user review.
  */
-async function confirmSave(body = {}) {
+async function confirmSave(body = {}, storeId = "store_default") {
   const barcode = String(body.barcode || "").trim();
   const productName = String(body.product_name || "").trim();
   const expiryDate = String(body.expiry_date || "").trim();
 
   if (body.record_id) {
-    const existing = await repo.get(body.record_id);
+    const existing = await repo.get(body.record_id, storeId);
     if (existing) {
       return { httpStatus: 200, body: computed(existing) };
     }
@@ -165,7 +166,6 @@ async function confirmSave(body = {}) {
   const quantity = normalizedQuantity(body.quantity || 1) || 1;
 
   const item = await create({
-    id: body.id,
     barcode,
     product_name: productName,
     brand: body.brand || "",
@@ -177,7 +177,7 @@ async function confirmSave(body = {}) {
     confidence: typeof body.confidence === "number" ? body.confidence : null,
     source: body.source || "ocr",
     review_status: "confirmed"
-  });
+  }, storeId);
 
   return { httpStatus: 201, body: computed(item) };
 }
@@ -185,8 +185,8 @@ async function confirmSave(body = {}) {
 /**
  * List inventory items with optional search and filtering.
  */
-async function list(options = {}) {
-  const items = await repo.list(options);
+async function list(options = {}, storeId = "store_default") {
+  const items = await repo.list(options, storeId);
   let computedItems = items.map(computed);
 
   if (options.status && options.status !== "all") {
@@ -203,16 +203,16 @@ async function list(options = {}) {
 /**
  * Get item by ID.
  */
-async function get(id) {
-  const item = await repo.get(id);
+async function get(id, storeId = "store_default") {
+  const item = await repo.get(id, storeId);
   return item ? computed(item) : null;
 }
 
 /**
  * Update item by ID.
  */
-async function update(id, updates = {}) {
-  const existing = await repo.get(id);
+async function update(id, updates = {}, storeId = "store_default") {
+  const existing = await repo.get(id, storeId);
   if (!existing) return null;
 
   const payload = {};
@@ -228,22 +228,22 @@ async function update(id, updates = {}) {
     if (q !== null) payload.quantity = q;
   }
 
-  const updatedItem = await repo.update(id, payload);
+  const updatedItem = await repo.update(id, payload, storeId);
   return updatedItem ? computed(updatedItem) : null;
 }
 
 /**
  * Delete item by ID.
  */
-async function remove(id) {
-  return repo.remove(id);
+async function remove(id, storeId = "store_default") {
+  return repo.remove(id, storeId);
 }
 
 /**
  * Aggregates dashboard statistics from live database records.
  */
-async function getSummary() {
-  const allItems = await list();
+async function getSummary(storeId = "store_default") {
+  const allItems = await list({}, storeId);
 
   let safeCount = 0;
   let expiringSoonCount = 0;

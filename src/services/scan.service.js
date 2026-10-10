@@ -9,7 +9,7 @@ const { validate } = require("./validation.service");
 const inventory = require("./inventory.service");
 const scanHistoryService = require("./scan-history.service");
 
-async function processScan({ barcode, image, autoSave = false }) {
+async function processScan({ barcode, image, autoSave = false, storeId = "store_default" }) {
   const normalizedBarcode = String(barcode || "").trim();
 
   if (!normalizedBarcode) {
@@ -23,7 +23,7 @@ async function processScan({ barcode, image, autoSave = false }) {
   }
 
   // 1. Product Lookup (Local / Firestore repository -> Open Food Facts)
-  const productResult = await findProduct(normalizedBarcode);
+  const productResult = await findProduct(normalizedBarcode, storeId);
   const isProductFound = productResult.status === "found" && productResult.product;
 
   const product = isProductFound
@@ -44,6 +44,7 @@ async function processScan({ barcode, image, autoSave = false }) {
     console.error("[Scan Service] OCR error:", error.message);
     await scanHistoryService.record({
       barcode: normalizedBarcode,
+      store_id: storeId,
       ocr_status: "failed",
       raw_text: null,
       error: error.message
@@ -63,6 +64,7 @@ async function processScan({ barcode, image, autoSave = false }) {
   if (!ocr || !ocr.rawText || !ocr.rawText.trim()) {
     await scanHistoryService.record({
       barcode: normalizedBarcode,
+      store_id: storeId,
       ocr_status: "empty",
       raw_text: ""
     });
@@ -95,6 +97,7 @@ async function processScan({ barcode, image, autoSave = false }) {
   // 6. Record to Scan History Audit Trail
   await scanHistoryService.record({
     barcode: normalizedBarcode,
+    store_id: storeId,
     product_name: product.name,
     ocr_status: "success",
     raw_text: ocr.rawText,
@@ -120,7 +123,7 @@ async function processScan({ barcode, image, autoSave = false }) {
       confidence: interpretation.confidence,
       source: "ocr",
       review_status: "confirmed"
-    });
+    }, storeId);
   }
 
   const responseStatus = validation.accepted

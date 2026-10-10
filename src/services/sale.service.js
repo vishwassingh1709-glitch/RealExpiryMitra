@@ -9,11 +9,11 @@ const inventoryRepo = require("../repositories/inventory.repository");
  * Records a new sale.
  * Validates stock availability, prevents negative inventory and duplicate submissions.
  */
-async function recordSale(payload = {}) {
+async function recordSale(payload = {}, storeId = payload.store_id || "store_default") {
   const inventory_id = String(payload.inventory_id || "").trim();
   const quantity = Math.floor(Number(payload.quantity_sold || payload.quantity || 1));
   const unit_price = Number(payload.unit_price) >= 0 ? Number(payload.unit_price) : 0;
-  const store_id = payload.store_id || "store_default";
+  const store_id = storeId;
   const notes = payload.notes || "";
 
   if (!inventory_id) {
@@ -31,7 +31,7 @@ async function recordSale(payload = {}) {
   }
 
   // Pre-check inventory existence
-  const inventoryItem = await inventoryRepo.get(inventory_id);
+  const inventoryItem = await inventoryRepo.get(inventory_id, store_id);
   if (!inventoryItem) {
     return {
       httpStatus: 404,

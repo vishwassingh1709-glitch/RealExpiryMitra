@@ -25,7 +25,7 @@ router.get("/barcode/:barcode", async (req, res, next) => {
       });
     }
     const barcode = String(rawBarcode).trim();
-    const result = await productService.findProduct(barcode);
+    const result = await productService.findProduct(barcode, req.user.store_id);
     if (result.status === "found" && result.product) {
       return res.json({
         success: true,
@@ -55,7 +55,7 @@ router.post("/barcode", async (req, res, next) => {
       });
     }
     const barcode = String(rawBarcode).trim();
-    const result = await productService.findProduct(barcode);
+    const result = await productService.findProduct(barcode, req.user.store_id);
     if (result.status === "found" && result.product) {
       return res.json({
         success: true,

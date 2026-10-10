@@ -11,3 +11,4 @@ data/categories.json
 *firebase-adminsdk*.json
 .DS_Store
 Thumbs.db
+.env.example

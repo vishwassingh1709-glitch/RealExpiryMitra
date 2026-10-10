@@ -26,6 +26,27 @@ const DEFAULT_STORE = {
   updated_at: new Date().toISOString()
 };
 
+function newStoreRecord(storeId, profile = {}) {
+  const base = storeId === "store_default" ? DEFAULT_STORE : {
+    id: storeId,
+    store_name: "My Store",
+    phone: "",
+    email: "",
+    owner_name: "Store owner",
+    owner_uid: storeId,
+    address: "",
+    role: "shopkeeper",
+    settings: DEFAULT_STORE.settings
+  };
+  return {
+    ...base,
+    ...profile,
+    id: storeId,
+    owner_uid: storeId,
+    updated_at: new Date().toISOString()
+  };
+}
+
 function isFirestoreActive() {
   const provider = (process.env.STORAGE_PROVIDER || "").toLowerCase();
   if (provider === "json") return false;
@@ -39,19 +60,51 @@ async function getStore(storeId = "store_default") {
     if (doc.exists) {
       return { id: doc.id, ...doc.data() };
     }
-    // Initialize default if not exists
-    await db.collection(COLLECTION).doc(storeId).set(DEFAULT_STORE);
-    return DEFAULT_STORE;
+    return createStoreIfMissing(storeId);
   }
 
   const stores = await read(JSON_FILE, [DEFAULT_STORE]);
   const found = stores.find((s) => s.id === storeId);
-  if (!found) {
-    stores.push(DEFAULT_STORE);
-    await write(JSON_FILE, stores);
-    return DEFAULT_STORE;
+  if (found) return found;
+  return createStoreIfMissing(storeId);
+}
+
+async function createStoreIfMissing(storeId, profile = {}) {
+  const record = newStoreRecord(storeId, profile);
+  const db = getFirestoreDb();
+  if (isFirestoreActive() && db) {
+    return db.runTransaction(async (transaction) => {
+      const ref = db.collection(COLLECTION).doc(storeId);
+      const snapshot = await transaction.get(ref);
+      if (snapshot.exists) return { id: snapshot.id, ...snapshot.data() };
+      transaction.set(ref, record);
+      return record;
+    });
   }
-  return found;
+
+  const stores = await read(JSON_FILE, [DEFAULT_STORE]);
+  const found = stores.find((s) => s.id === storeId);
+  if (found) return found;
+  stores.push(record);
+  await write(JSON_FILE, stores);
+  return record;
+}
+
+async function deleteStoreIfOwned(storeId, ownerUid) {
+  const db = getFirestoreDb();
+  if (isFirestoreActive() && db) {
+    const ref = db.collection(COLLECTION).doc(storeId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists || snapshot.data().owner_uid !== ownerUid) return false;
+    await ref.delete();
+    return true;
+  }
+
+  const stores = await read(JSON_FILE, [DEFAULT_STORE]);
+  const filtered = stores.filter((store) => !(store.id === storeId && store.owner_uid === ownerUid));
+  if (filtered.length === stores.length) return false;
+  await write(JSON_FILE, filtered);
+  return true;
 }
 
 async function updateStore(storeId = "store_default", updates = {}) {
@@ -82,6 +135,8 @@ async function updateStore(storeId = "store_default", updates = {}) {
 
 module.exports = {
   getStore,
+  createStoreIfMissing,
+  deleteStoreIfOwned,
   updateStore,
   DEFAULT_STORE,
   isFirestoreActive

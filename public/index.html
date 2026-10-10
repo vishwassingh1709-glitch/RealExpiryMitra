@@ -5,32 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>ExpiryMitra — Smart Food & Grocery Expiry Management</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="assets/expirymitra-logo.svg">
 </head>
 <body>
   <div class="app-container">
-    <!-- Top System Status Bar -->
-    <header class="status-bar" id="app-status-bar">
-      <span class="status-time" id="status-time">9:41</span>
-      <div class="status-bar-icons" aria-hidden="true">
-        <svg class="status-icon" width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
-          <path d="M1 9h2v3H1V9zm4-3h2v6H5V6zm4-3h2v9H9V3zm4-3h2v12h-2V0z"/>
-        </svg>
-        <svg class="status-icon" width="15" height="12" viewBox="0 0 15 12" fill="currentColor">
-          <path d="M7.5 3C9.5 3 11.3 3.8 12.6 5.1L14 3.7C12.3 2 10 1 7.5 1S2.7 2 1 3.7l1.4 1.4C3.7 3.8 5.5 3 7.5 3zm0 4c1.1 0 2.2.5 3 1.2L12 6.7C10.8 5.7 9.2 5 7.5 5S4.2 5.7 3 6.7l1.5 1.5c.8-.7 1.9-1.2 3-1.2zm0 4c.8 0 1.5.7 1.5 1.5S8.3 14 7.5 14 6 13.3 6 12.5 6.7 11 7.5 11z"/>
-        </svg>
-        <div class="battery-icon">
-          <div class="battery-body">
-            <div class="battery-level"></div>
-          </div>
-          <div class="battery-cap"></div>
-        </div>
-      </div>
-    </header>
-
     <!-- Global Toast Notifications -->
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
@@ -43,22 +21,37 @@
       <section class="screen" id="screen-splash">
         <div class="splash-content">
           <div class="splash-logo-wrap">
-            <img src="assets/logo.svg" alt="ExpiryMitra Logo" class="splash-logo">
+            <img src="assets/expirymitra-logo.svg" alt="ExpiryMitra" class="splash-logo" width="320" height="72" fetchpriority="high">
           </div>
 
-          <div class="splash-hero-box">
-            <div class="splash-blob-bg"></div>
-            <img src="assets/grocery-basket.svg" alt="Grocery Freshness Basket" class="splash-hero-img">
-          </div>
-
-          <div class="splash-text-group">
-            <p class="splash-bullets">Track &bull; Prioritize &bull; Sell Before It Expires</p>
-            <div class="splash-dots" aria-hidden="true">
-              <span class="splash-dot active"></span>
-              <span class="splash-dot"></span>
-              <span class="splash-dot"></span>
-              <span class="splash-dot"></span>
+          <div class="splash-carousel" id="splash-carousel" role="region" aria-roledescription="carousel" aria-label="ExpiryMitra introduction" tabindex="0">
+            <button class="splash-slide-arrow previous" id="splash-previous" type="button" aria-label="Previous introduction slide"><span aria-hidden="true">&#8249;</span></button>
+            <div class="splash-slide-window" id="splash-slide-window" aria-live="polite">
+              <article class="splash-slide active" data-slide="0" aria-hidden="false">
+                <div class="splash-hero-box"><div class="splash-blob-bg"></div><img src="assets/grocery-basket.svg" alt="Basket of groceries" class="splash-hero-img" width="260" height="260" fetchpriority="high"></div>
+                <div class="splash-text-group"><h1>Welcome to ExpiryMitra</h1><p>Track, prioritize, and sell products before they expire.</p></div>
+              </article>
+              <article class="splash-slide" data-slide="1" aria-hidden="true" inert>
+                <div class="splash-hero-box"><div class="splash-blob-bg"></div><img src="assets/maggi-noodles.svg" alt="Packaged grocery product" class="splash-hero-img" width="260" height="260" loading="lazy"></div>
+                <div class="splash-text-group"><h2>Scan and capture expiry details</h2><p>Use barcode scanning and expiry-label capture in the add-product flow.</p></div>
+              </article>
+              <article class="splash-slide" data-slide="2" aria-hidden="true" inert>
+                <div class="splash-hero-box"><div class="splash-blob-bg"></div><img src="assets/banner-groceries.svg" alt="Groceries organized for tracking" class="splash-hero-img" width="260" height="260" loading="lazy"></div>
+                <div class="splash-text-group"><h2>Keep stock and expiry dates together</h2><p>Review quantities, batches, and expiry status from your inventory.</p></div>
+              </article>
+              <article class="splash-slide" data-slide="3" aria-hidden="true" inert>
+                <div class="splash-hero-box"><div class="splash-blob-bg"></div><img src="assets/shopkeeper.svg" alt="Shopkeeper using ExpiryMitra" class="splash-hero-img" width="260" height="260" loading="lazy"></div>
+                <div class="splash-text-group"><h2>Record sales as stock moves</h2><p>Keep sales and remaining inventory in one place.</p></div>
+              </article>
             </div>
+            <button class="splash-slide-arrow next" id="splash-next" type="button" aria-label="Next introduction slide"><span aria-hidden="true">&#8250;</span></button>
+          </div>
+
+          <div class="splash-pagination" role="group" aria-label="Choose an introduction slide">
+            <button class="splash-dot active" type="button" data-slide-to="0" aria-label="Slide 1 of 4" aria-current="true"></button>
+            <button class="splash-dot" type="button" data-slide-to="1" aria-label="Slide 2 of 4" aria-current="false"></button>
+            <button class="splash-dot" type="button" data-slide-to="2" aria-label="Slide 3 of 4" aria-current="false"></button>
+            <button class="splash-dot" type="button" data-slide-to="3" aria-label="Slide 4 of 4" aria-current="false"></button>
           </div>
 
           <div class="splash-action">
@@ -75,103 +68,55 @@
       <section class="screen" id="screen-auth">
         <div class="auth-wrapper">
           <div class="auth-logo-header">
-            <img src="assets/logo.svg" alt="ExpiryMitra" class="auth-brand-logo">
-            <p class="auth-tagline">Batch Wisdom. Freshness Streamlined.</p>
+            <img src="assets/expirymitra-logo.svg" alt="ExpiryMitra" class="auth-brand-logo" width="320" height="72">
+            <h1 id="auth-title">Welcome back</h1>
+            <p id="auth-description">Sign in to continue to your store.</p>
           </div>
-
-          <!-- Role Toggle: Shopkeeper vs Customer -->
-          <div class="role-toggle-container" role="tablist">
-            <button class="role-toggle-btn active" id="role-shopkeeper-btn" type="button" role="tab" aria-selected="true">
-              Shopkeeper
-            </button>
-            <button class="role-toggle-btn" id="role-customer-btn" type="button" role="tab" aria-selected="false">
-              Customer
-            </button>
+          <div class="auth-mode-toggle" role="tablist" aria-label="Account access">
+            <button class="auth-mode-btn active" id="auth-tab-login" type="button" role="tab" aria-selected="true">Sign In</button>
+            <button class="auth-mode-btn" id="auth-tab-signup" type="button" role="tab" aria-selected="false">Create Account</button>
           </div>
-
-          <form id="auth-form" class="auth-form" onsubmit="return false;">
-            <!-- Shop Name Field -->
-            <div class="form-group" id="group-shop-name">
-              <label class="sr-only" for="auth-shop-name">Shop Name</label>
+          <form id="auth-form" class="auth-form" novalidate>
+            <div class="form-group auth-field-hidden" id="group-shop-name">
+              <label class="sr-only" for="auth-shop-name">Your name</label>
               <div class="input-with-icon">
-                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                <div class="input-content">
-                  <span class="input-label-mini">Shop Name</span>
-                  <input type="text" id="auth-shop-name" class="input-field" value="Sharma Store" placeholder="Sharma Store">
-                </div>
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <div class="input-content"><span class="input-label-mini">Your name</span><input type="text" id="auth-shop-name" class="input-field" autocomplete="name" placeholder="Your name"></div>
               </div>
             </div>
-
-            <!-- Phone / Email Field -->
+            <div class="form-group auth-field-hidden" id="group-store-name">
+              <label class="sr-only" for="auth-store-name">Store name</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18l-1.5-6h-15z"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></svg>
+                <div class="input-content"><span class="input-label-mini">Store name</span><input type="text" id="auth-store-name" class="input-field" autocomplete="organization" placeholder="Your store"></div>
+              </div>
+            </div>
             <div class="form-group">
-              <label class="sr-only" for="auth-identifier">Phone / Email</label>
+              <label class="sr-only" for="auth-identifier">Email</label>
               <div class="input-with-icon">
-                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                <div class="input-content">
-                  <span class="input-label-mini">Phone / Email</span>
-                  <input type="text" id="auth-identifier" class="input-field" value="9876543210" placeholder="9876543210">
-                </div>
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                <div class="input-content"><span class="input-label-mini">Email</span><input type="email" id="auth-identifier" class="input-field" autocomplete="email" placeholder="you@example.com" required></div>
               </div>
             </div>
-
-            <!-- Password Field -->
             <div class="form-group">
               <label class="sr-only" for="auth-password">Password</label>
               <div class="input-with-icon">
-                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                <div class="input-content">
-                  <span class="input-label-mini">Password</span>
-                  <input type="password" id="auth-password" class="input-field" value="••••••••" placeholder="Password">
-                </div>
-                <button type="button" class="password-toggle-btn" id="btn-toggle-password" aria-label="Toggle password visibility">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div class="input-content"><span class="input-label-mini">Password</span><input type="password" id="auth-password" class="input-field" autocomplete="current-password" placeholder="Password" required minlength="6"></div>
+                <button type="button" class="password-toggle-btn" id="btn-toggle-password" aria-label="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
               </div>
             </div>
-
-            <div class="form-meta-row">
-              <label class="remember-label">
-                <input type="checkbox" id="auth-remember" class="custom-checkbox" checked>
-                <span>Remember me</span>
-              </label>
-              <a href="#" class="forgot-link" id="link-forgot-pass">Forgot?</a>
+            <div class="form-group auth-field-hidden" id="group-confirm-password">
+              <label class="sr-only" for="auth-confirm-password">Confirm password</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div class="input-content"><span class="input-label-mini">Confirm password</span><input type="password" id="auth-confirm-password" class="input-field" autocomplete="new-password" placeholder="Confirm password" minlength="6"></div>
+              </div>
             </div>
-
-            <button class="btn-primary" id="btn-login-submit" type="submit">
-              Login
-            </button>
-
-            <div class="auth-divider">
-              <span>or continue with</span>
-            </div>
-
-            <button type="button" class="google-btn" id="btn-google-auth">
-              <svg class="google-icon" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.15C3.25 21.37 7.31 24 12 24z"/>
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.27C.46 8.2 0 10.04 0 12s.46 3.8 1.27 5.42l4.01-3.15z"/>
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.63 1.27 6.58l4.01 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-              </svg>
-              Continue with Google
-            </button>
-
-            <p class="auth-switch-text">
-              Don't have an account? <button type="button" class="auth-switch-btn" id="btn-switch-signup">Sign Up</button>
-            </p>
+            <p class="auth-feedback" id="auth-feedback" role="status" aria-live="polite"></p>
+            <button class="btn-primary" id="btn-login-submit" type="submit">Sign In</button>
+            <p class="auth-switch-text"><span id="auth-switch-copy">New to ExpiryMitra?</span> <button type="button" class="auth-switch-btn" id="btn-switch-signup">Create Account</button></p>
           </form>
-
-          <!-- Subtle bottom decorative botanical corner leaves -->
           <div class="auth-leaf-decor left" aria-hidden="true"></div>
           <div class="auth-leaf-decor right" aria-hidden="true"></div>
         </div>
@@ -191,10 +136,7 @@
                 <line x1="3" y1="18" x2="21" y2="18"/>
               </svg>
             </button>
-            <div class="dash-em-brand">
-              <span class="dash-em-title">EM</span>
-              <span class="dash-em-spark">&#10022;</span>
-            </div>
+            <img src="assets/expirymitra-logo.svg" alt="ExpiryMitra" class="dash-brand-logo" width="160" height="36">
           </div>
           <div class="dash-topbar-right">
             <button class="header-btn notif-btn" id="btn-notif" aria-label="View notifications">
@@ -212,8 +154,8 @@
 
         <!-- Greeting Row -->
         <div class="greeting-row">
-          <h1 class="greeting-title">Good Morning, Shopkeeper! &#128075;</h1>
-          <p class="store-name-sub" id="dash-store-name">Sharma Store</p>
+            <h1 class="greeting-title">Welcome back &#128075;</h1>
+          <p class="store-name-sub" id="dash-store-name"></p>
         </div>
 
         <!-- Banner Card -->
@@ -231,7 +173,7 @@
           <!-- Total Products -->
           <div class="stat-card" data-nav="inventory" data-filter="all" role="button" tabindex="0">
             <div class="stat-meta">
-              <div class="stat-number" id="stat-total-products">128</div>
+            <div class="stat-number" id="stat-total-products">0</div>
               <div class="stat-label">Total Products</div>
             </div>
             <div class="stat-icon-box stat-icon-green" aria-hidden="true">
@@ -246,7 +188,7 @@
           <!-- Expiring Soon -->
           <div class="stat-card" data-nav="inventory" data-filter="expiring_soon" role="button" tabindex="0">
             <div class="stat-meta">
-              <div class="stat-number" id="stat-expiring-soon">7</div>
+              <div class="stat-number" id="stat-expiring-soon">0</div>
               <div class="stat-label">Expiring Soon</div>
             </div>
             <div class="stat-icon-box stat-icon-orange" aria-hidden="true">
@@ -260,7 +202,7 @@
           <!-- Expired -->
           <div class="stat-card" data-nav="inventory" data-filter="expired" role="button" tabindex="0">
             <div class="stat-meta">
-              <div class="stat-number" id="stat-expired">2</div>
+              <div class="stat-number" id="stat-expired">0</div>
               <div class="stat-label">Expired</div>
             </div>
             <div class="stat-icon-box stat-icon-red" aria-hidden="true">
@@ -275,7 +217,7 @@
           <!-- Low Stock -->
           <div class="stat-card" data-nav="inventory" data-filter="low_stock" role="button" tabindex="0">
             <div class="stat-meta">
-              <div class="stat-number" id="stat-low-stock">5</div>
+              <div class="stat-number" id="stat-low-stock">0</div>
               <div class="stat-label">Low Stock</div>
             </div>
             <div class="stat-icon-box stat-icon-blue" aria-hidden="true">
@@ -474,16 +416,6 @@
               <span>Upload Photo</span>
               <input type="file" id="scan-file-input" accept="image/*" style="display: none;">
             </label>
-            <button class="quick-tool-btn" id="btn-demo-barcode" type="button">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 5v14"/>
-                <path d="M8 5v14"/>
-                <path d="M12 5v14"/>
-                <path d="M17 5v14"/>
-                <path d="M21 5v14"/>
-              </svg>
-              <span>Preset Barcode</span>
-            </button>
           </div>
 
           <!-- Product Not Found Card -->
@@ -511,11 +443,11 @@
             <div class="product-found-row">
               <div class="product-found-meta">
                 <div class="product-thumb">
-                  <img id="found-prod-img" src="assets/maggi-noodles.svg" alt="Product found">
+                  <img id="found-prod-img" src="assets/grocery-basket.svg" alt="Product found" width="64" height="64" loading="lazy">
                 </div>
                 <div>
-                  <h3 id="found-prod-name" class="found-name">Maggi Noodles</h3>
-                  <p id="found-prod-variant" class="found-variant">Masala, 70g</p>
+                  <h3 id="found-prod-name" class="found-name">Product details</h3>
+                  <p id="found-prod-variant" class="found-variant">Scan or search a barcode</p>
                 </div>
               </div>
               <button class="btn-text-green" id="btn-edit-found" type="button">
@@ -532,11 +464,11 @@
           <div class="form-grid-2">
             <div class="form-group-compact">
               <label class="form-compact-label" for="add-product-barcode">Product No.</label>
-              <input type="text" id="add-product-barcode" class="input-field" value="B560">
+              <input type="text" id="add-product-barcode" class="input-field" placeholder="Barcode">
             </div>
             <div class="form-group-compact">
               <label class="form-compact-label" for="add-product-batch">Batch No.</label>
-              <input type="text" id="add-product-batch" class="input-field" value="M102">
+              <input type="text" id="add-product-batch" class="input-field" placeholder="Batch number">
             </div>
           </div>
 
@@ -545,14 +477,14 @@
               <label class="form-compact-label">Quantity</label>
               <div class="stepper-wrap">
                 <button type="button" class="stepper-btn" id="btn-add-qty-dec">&minus;</button>
-                <span class="stepper-value" id="add-qty-val">50</span>
+                <span class="stepper-value" id="add-qty-val">1</span>
                 <button type="button" class="stepper-btn" id="btn-add-qty-inc">&plus;</button>
               </div>
             </div>
             <div class="form-group-compact">
               <label class="form-compact-label" for="add-product-expiry">Expiry Date</label>
               <div class="date-input-wrap">
-                <input type="date" id="add-product-expiry" class="input-field" value="2026-11-05">
+                <input type="date" id="add-product-expiry" class="input-field">
               </div>
             </div>
           </div>
@@ -654,10 +586,10 @@
         <!-- Product Hero Card -->
         <div class="product-hero-card">
           <div class="product-hero-img-box">
-            <img id="detail-prod-img" src="assets/maggi-noodles.svg" alt="Product" class="product-hero-img">
+            <img id="detail-prod-img" src="assets/grocery-basket.svg" alt="Product" class="product-hero-img" width="120" height="120" loading="lazy">
           </div>
-          <h2 id="detail-prod-name" class="product-hero-title">Maggi Noodles</h2>
-          <p id="detail-prod-variant" class="product-hero-sub">Masala, 70g</p>
+          <h2 id="detail-prod-name" class="product-hero-title">Product details</h2>
+          <p id="detail-prod-variant" class="product-hero-sub"></p>
           <span id="detail-prod-badge" class="badge badge-safe">&#9679; In Stock</span>
         </div>
 
@@ -672,19 +604,19 @@
         <div class="info-grid-6" id="detail-overview-grid">
           <div class="info-tile">
             <div class="info-tile-label">Batch No.</div>
-            <div class="info-tile-val" id="tile-batch">B560</div>
+            <div class="info-tile-val" id="tile-batch">—</div>
           </div>
           <div class="info-tile">
             <div class="info-tile-label">Expiry Date</div>
-            <div class="info-tile-val" id="tile-expiry">05 Nov 2026</div>
+            <div class="info-tile-val" id="tile-expiry">—</div>
           </div>
           <div class="info-tile">
             <div class="info-tile-label">Quantity</div>
-            <div class="info-tile-val" id="tile-quantity">50 units</div>
+            <div class="info-tile-val" id="tile-quantity">—</div>
           </div>
           <div class="info-tile">
             <div class="info-tile-label">Days Left</div>
-            <div class="info-tile-val highlight-orange" id="tile-days-left">26 days</div>
+            <div class="info-tile-val highlight-orange" id="tile-days-left">—</div>
           </div>
           <div class="info-tile">
             <div class="info-tile-label">Category</div>
@@ -692,7 +624,7 @@
           </div>
           <div class="info-tile">
             <div class="info-tile-label">Product No.</div>
-            <div class="info-tile-val" id="tile-barcode">M102</div>
+            <div class="info-tile-val" id="tile-barcode">—</div>
           </div>
         </div>
 
@@ -833,10 +765,10 @@
 
         <!-- Filter pills with counts -->
         <div class="filter-row" role="tablist">
-          <button class="filter-pill active" data-alert-filter="all" id="pill-alert-all" type="button">All (9)</button>
-          <button class="filter-pill" data-alert-filter="critical" id="pill-alert-critical" type="button">Critical (2)</button>
-          <button class="filter-pill" data-alert-filter="soon" id="pill-alert-soon" type="button">Soon (5)</button>
-          <button class="filter-pill" data-alert-filter="expired" id="pill-alert-expired" type="button">Expired (2)</button>
+          <button class="filter-pill active" data-alert-filter="all" id="pill-alert-all" type="button">All (0)</button>
+          <button class="filter-pill" data-alert-filter="critical" id="pill-alert-critical" type="button">Critical (0)</button>
+          <button class="filter-pill" data-alert-filter="soon" id="pill-alert-soon" type="button">Soon (0)</button>
+          <button class="filter-pill" data-alert-filter="expired" id="pill-alert-expired" type="button">Expired (0)</button>
         </div>
 
         <!-- Alerts Product List -->
@@ -869,7 +801,7 @@
 
         <!-- Camera / Scanned Image Preview -->
         <div class="viewfinder-box" style="height: 190px;">
-          <img id="scanned-image-preview" src="assets/britannia-biscuits.svg" alt="Scanned item" class="viewfinder-sample-img">
+          <img id="scanned-image-preview" src="assets/grocery-basket.svg" alt="Scanned item" class="viewfinder-sample-img" width="240" height="240">
           <div class="viewfinder-overlay">
             <div class="viewfinder-frame" style="width: 200px; height: 120px;">
               <span class="corner top-left"></span>
@@ -891,11 +823,11 @@
         <!-- Product Preview Card -->
         <div class="card product-item-preview">
           <div class="product-thumb">
-            <img id="res-prod-img" src="assets/britannia-biscuits.svg" alt="Product">
+            <img id="res-prod-img" src="assets/grocery-basket.svg" alt="Product" width="56" height="56" loading="lazy">
           </div>
           <div style="flex: 1;">
-            <h3 id="res-prod-name" class="product-name">Britannia Biscuits</h3>
-            <p id="res-prod-variant" class="product-meta">Good Day, 100g</p>
+            <h3 id="res-prod-name" class="product-name">Product details</h3>
+            <p id="res-prod-variant" class="product-meta"></p>
           </div>
         </div>
 
@@ -903,28 +835,28 @@
         <div class="card ocr-review-card">
           <div class="ocr-review-header">
             <span class="ocr-review-title">OCR &amp; AI Extraction</span>
-            <span class="badge badge-safe" id="res-confidence-badge">96% Confident</span>
+            <span class="badge" id="res-confidence-badge">Awaiting scan</span>
           </div>
 
           <div class="ocr-raw-box" id="res-raw-text">
-            MFG 12/06/2024 EXP 11/06/2026 BATCH A24B7
+            Scan a product label to read its details.
           </div>
 
           <div class="form-grid-2">
             <div class="form-group-compact">
               <label class="form-compact-label" for="res-mfg-date">Manufacturing Date</label>
-              <input type="date" id="res-mfg-date" class="input-field" value="2024-06-12">
+            <input type="date" id="res-mfg-date" class="input-field">
             </div>
             <div class="form-group-compact">
               <label class="form-compact-label" for="res-expiry-date">Expiry Date</label>
-              <input type="date" id="res-expiry-date" class="input-field" value="2026-06-11">
+              <input type="date" id="res-expiry-date" class="input-field">
             </div>
           </div>
 
           <div class="form-grid-2" style="margin-top: 6px;">
             <div class="form-group-compact">
               <label class="form-compact-label" for="res-batch">Batch</label>
-              <input type="text" id="res-batch" class="input-field" value="A24B7">
+              <input type="text" id="res-batch" class="input-field" placeholder="Batch number">
             </div>
             <div class="form-group-compact">
               <label class="form-compact-label" for="res-quantity">Quantity</label>
@@ -971,11 +903,11 @@
         <!-- 2 Metric Cards: Total Sales and Total Revenue -->
         <div class="sales-metric-row">
           <div class="sales-metric-card">
-            <div class="sales-metric-val" id="sales-stat-count">18</div>
+            <div class="sales-metric-val" id="sales-stat-count">0</div>
             <div class="sales-metric-lbl">Total Sales</div>
           </div>
           <div class="sales-metric-card">
-            <div class="sales-metric-val revenue" id="sales-stat-revenue">&#8377;1,440</div>
+            <div class="sales-metric-val revenue" id="sales-stat-revenue">&#8377;0</div>
             <div class="sales-metric-lbl">Total Revenue</div>
           </div>
         </div>
@@ -1003,8 +935,8 @@
         <div class="store-profile-hero">
           <div class="store-avatar-box" aria-hidden="true">&#127978;</div>
           <div class="store-profile-info">
-            <h2 id="prof-store-name" class="store-title">Sharma Store</h2>
-            <p id="prof-store-phone" class="store-phone">9876543210</p>
+            <h2 id="prof-store-name" class="store-title">My Store</h2>
+            <p id="prof-store-phone" class="store-phone"></p>
           </div>
           <button class="btn-edit-pill" id="btn-edit-store" type="button">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1133,7 +1065,7 @@
       <section class="screen" id="screen-branding">
         <div class="branding-wrap">
           <div class="branding-logo-box">
-            <img src="assets/logo.svg" alt="ExpiryMitra" class="branding-logo">
+            <img src="assets/expirymitra-logo.svg" alt="ExpiryMitra" class="branding-logo" width="320" height="72">
           </div>
           <div class="branding-art-box">
             <img src="assets/shopkeeper.svg" alt="Smart shopkeeper" class="branding-hero-img">
@@ -1242,8 +1174,8 @@
           <button class="modal-close-btn" id="btn-close-stock-modal" type="button" aria-label="Close modal">&times;</button>
         </div>
         <div style="margin-bottom: 16px;">
-          <p id="stock-modal-prod-name" style="font-size: 15px; font-weight: 700; color: var(--navy);">Maggi Noodles</p>
-          <p id="stock-modal-current" style="font-size: 13px; color: var(--navy-muted); margin-top: 2px;">Current Stock: 50 units</p>
+          <p id="stock-modal-prod-name" style="font-size: 15px; font-weight: 700; color: var(--navy);"></p>
+          <p id="stock-modal-current" style="font-size: 13px; color: var(--navy-muted); margin-top: 2px;"></p>
         </div>
         <div class="form-group-compact">
           <label class="form-compact-label" for="add-stock-units">Units to Add</label>
@@ -1263,15 +1195,15 @@
         <form id="form-store-details" onsubmit="return false;">
           <div class="form-group-compact">
             <label class="form-compact-label" for="store-edit-name">Store Name</label>
-            <input type="text" id="store-edit-name" class="input-field" value="Sharma Store">
+            <input type="text" id="store-edit-name" class="input-field" placeholder="Store name">
           </div>
           <div class="form-group-compact">
             <label class="form-compact-label" for="store-edit-phone">Phone Number</label>
-            <input type="text" id="store-edit-phone" class="input-field" value="9876543210">
+            <input type="text" id="store-edit-phone" class="input-field" placeholder="Phone number">
           </div>
           <div class="form-group-compact">
             <label class="form-compact-label" for="store-edit-address">Address</label>
-            <input type="text" id="store-edit-address" class="input-field" value="Shop No. 4, Market Complex">
+            <input type="text" id="store-edit-address" class="input-field" placeholder="Store address">
           </div>
           <button class="btn-primary" id="btn-save-store-details" type="button" style="margin-top: 10px;">Save Store Profile</button>
         </form>

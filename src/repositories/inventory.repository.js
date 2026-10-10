@@ -20,11 +20,12 @@ function isFirestoreActive() {
  * @param {object} item
  * @returns {Promise<object>}
  */
-async function save(item) {
+async function save(item, storeId = "store_default") {
   const db = getFirestoreDb();
   const timestamp = new Date().toISOString();
   const record = {
     ...item,
+    store_id: storeId,
     created_at: item.created_at || timestamp,
     updated_at: timestamp
   };
@@ -51,17 +52,18 @@ async function save(item) {
  * @param {object} [options]
  * @returns {Promise<Array>}
  */
-async function list(options = {}) {
+async function list(options = {}, storeId = "store_default") {
   const { search, category, status, sortBy = "created_desc", limit, offset = 0 } = options;
   const db = getFirestoreDb();
 
   let items = [];
 
   if (isFirestoreActive() && db) {
-    const snapshot = await db.collection(COLLECTION).get();
+    const snapshot = await db.collection(COLLECTION).where("store_id", "==", storeId).get();
     items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   } else {
     items = await read(JSON_FILE, []);
+    items = items.filter((item) => (item.store_id || "store_default") === storeId);
   }
 
   // In-memory filtering and sorting (applies uniformly to both backends)
@@ -110,18 +112,19 @@ async function list(options = {}) {
  * @param {string} id
  * @returns {Promise<object|null>}
  */
-async function get(id) {
+async function get(id, storeId = "store_default") {
   if (!id) return null;
   const db = getFirestoreDb();
 
   if (isFirestoreActive() && db) {
     const doc = await db.collection(COLLECTION).doc(id).get();
     if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() };
+    const record = { id: doc.id, ...doc.data() };
+    return (record.store_id || "store_default") === storeId ? record : null;
   }
 
   const items = await read(JSON_FILE, []);
-  return items.find((item) => item.id === id) || null;
+  return items.find((item) => item.id === id && (item.store_id || "store_default") === storeId) || null;
 }
 
 /**
@@ -130,15 +133,16 @@ async function get(id) {
  * @param {object} partial
  * @returns {Promise<object|null>}
  */
-async function update(id, partial) {
+async function update(id, partial, storeId = "store_default") {
   if (!id) return null;
   const db = getFirestoreDb();
-  const existing = await get(id);
+  const existing = await get(id, storeId);
   if (!existing) return null;
 
   const updatedRecord = {
     ...existing,
     ...partial,
+    store_id: storeId,
     id, // guarantee id stays intact
     updated_at: new Date().toISOString()
   };
@@ -149,7 +153,7 @@ async function update(id, partial) {
   }
 
   const items = await read(JSON_FILE, []);
-  const index = items.findIndex((i) => i.id === id);
+  const index = items.findIndex((i) => i.id === id && (i.store_id || "store_default") === storeId);
   if (index >= 0) {
     items[index] = updatedRecord;
     await write(JSON_FILE, items);
@@ -164,21 +168,21 @@ async function update(id, partial) {
  * @param {string} id
  * @returns {Promise<boolean>}
  */
-async function remove(id) {
+async function remove(id, storeId = "store_default") {
   if (!id) return false;
   const db = getFirestoreDb();
 
   if (isFirestoreActive() && db) {
     const docRef = db.collection(COLLECTION).doc(id);
     const doc = await docRef.get();
-    if (!doc.exists) return false;
+    if (!doc.exists || (doc.data().store_id || "store_default") !== storeId) return false;
     await docRef.delete();
     return true;
   }
 
   const items = await read(JSON_FILE, []);
   const initialLength = items.length;
-  const filtered = items.filter((item) => item.id !== id);
+  const filtered = items.filter((item) => item.id !== id || (item.store_id || "store_default") !== storeId);
   if (filtered.length !== initialLength) {
     await write(JSON_FILE, filtered);
     return true;
@@ -191,13 +195,17 @@ async function remove(id) {
  * @param {string} barcode
  * @returns {Promise<object|null>}
  */
-async function getByBarcode(barcode) {
+async function getByBarcode(barcode, storeId = "store_default") {
   if (!barcode) return null;
   const normalizedBarcode = String(barcode).trim();
   const db = getFirestoreDb();
 
   if (isFirestoreActive() && db) {
-    const snapshot = await db.collection(COLLECTION).where("barcode", "==", normalizedBarcode).limit(1).get();
+    const snapshot = await db.collection(COLLECTION)
+      .where("store_id", "==", storeId)
+      .where("barcode", "==", normalizedBarcode)
+      .limit(1)
+      .get();
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       return { id: doc.id, ...doc.data() };
@@ -206,7 +214,7 @@ async function getByBarcode(barcode) {
   }
 
   const items = await read(JSON_FILE, []);
-  return items.find((item) => String(item.barcode).trim() === normalizedBarcode) || null;
+  return items.find((item) => String(item.barcode).trim() === normalizedBarcode && (item.store_id || "store_default") === storeId) || null;
 }
 
 module.exports = {

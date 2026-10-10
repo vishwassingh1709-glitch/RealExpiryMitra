@@ -1,41 +1,43 @@
 /**
- * Authentication and authorization middleware.
- * Verifies Firebase Auth ID tokens when present.
- * Falls back safely to default store credentials for offline and testing mode.
+ * Verifies Firebase Auth ID tokens and requires a store owner claim.
  */
 
-const admin = require("firebase-admin");
+const { getApps } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 
-async function optionalAuth(req, _res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const idToken = authHeader.split("Bearer ")[1];
-    if (admin.apps.length) {
-      try {
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        req.user = {
-          uid: decodedToken.uid,
-          email: decodedToken.email || "",
-          store_id: decodedToken.store_id || "store_default",
-          role: decodedToken.role || "shopkeeper"
-        };
-        return next();
-      } catch (err) {
-        console.warn("[Auth] Token verification failed:", err.message);
-      }
-    }
+  if (!getApps().length) {
+    return res.status(503).json({ status: "error", message: "Authentication is not configured." });
   }
 
-  // Default guest/local session context
-  req.user = {
-    uid: "local_user",
-    email: "sharmastore@example.com",
-    store_id: "store_default",
-    role: "shopkeeper"
-  };
-  return next();
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ status: "error", message: "Sign in to continue." });
+  }
+
+  try {
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) return res.status(401).json({ status: "error", message: "Sign in to continue." });
+
+    const decodedToken = await getAuth().verifyIdToken(token, true);
+    if (
+      decodedToken.role !== "shopkeeper" ||
+      !decodedToken.store_id ||
+      decodedToken.store_id !== decodedToken.uid
+    ) {
+      return res.status(403).json({ status: "error", message: "This account does not have a valid store workspace." });
+    }
+
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email || "",
+      store_id: decodedToken.store_id,
+      role: decodedToken.role
+    };
+    return next();
+  } catch (_) {
+    return res.status(401).json({ status: "error", message: "Your session expired. Please sign in again." });
+  }
 }
 
-module.exports = {
-  optionalAuth
-};
+module.exports = { requireAuth };

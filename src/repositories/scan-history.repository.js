@@ -20,6 +20,7 @@ async function recordScan(entry) {
   const id = entry.id || `scan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const record = {
     ...entry,
+    store_id: entry.store_id || "store_default",
     id,
     timestamp: entry.timestamp || new Date().toISOString()
   };
@@ -38,24 +39,25 @@ async function recordScan(entry) {
   return record;
 }
 
-async function getRecentScans(limit = 20) {
+async function getRecentScans(limit = 20, storeId = "store_default") {
   const db = getFirestoreDb();
   if (isFirestoreActive() && db) {
     const snapshot = await db
       .collection(COLLECTION)
+      .where("store_id", "==", storeId)
       .orderBy("timestamp", "desc")
       .limit(limit)
       .get()
       .catch(async () => {
         // In case index not built yet, fallback to un-ordered fetch
-        return db.collection(COLLECTION).limit(limit).get();
+        return db.collection(COLLECTION).where("store_id", "==", storeId).limit(limit).get();
       });
 
     return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   }
 
   const items = await read(JSON_FILE, []);
-  return items.slice(0, limit);
+  return items.filter((item) => (item.store_id || "store_default") === storeId).slice(0, limit);
 }
 
 module.exports = {

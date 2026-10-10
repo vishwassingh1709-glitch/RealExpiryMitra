@@ -237,7 +237,7 @@ http://localhost:3000
 
 ## ⚙️ Configuration (.env)
 
-The application runs **100% out-of-the-box** in offline mode using the built-in JSON persistence adapter, local Tesseract OCR engine, and deterministic date parser.
+The server can run locally with the JSON persistence adapter, local Tesseract OCR engine, and deterministic date parser. Protected app APIs require a signed-in Firebase account; without Firebase Authentication configuration, login and signup return a configuration error instead of creating a fake session.
 
 To enable live Google Cloud Firestore, Google Gemini AI, or OCR.space, create a `.env` file from `.env.example`:
 
@@ -255,7 +255,14 @@ copy .env.example .env
    FIREBASE_PROJECT_ID=your-project-id
    FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
    FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_KEY_HERE\n-----END PRIVATE KEY-----\n"
+   FIREBASE_WEB_API_KEY=your-firebase-web-api-key
    ```
+4. In Firebase Console, enable **Authentication → Email/Password**. The Web API key is read by the server for Firebase email/password sign-in; it is not embedded in frontend code. Each signup creates one shopkeeper-owned store keyed to that account. No account can choose an administrative role.
+
+### Production deployment
+- Configure the Firebase service account variables and `FIREBASE_WEB_API_KEY` in the hosting provider's environment settings. Do not commit a real `.env` file.
+- Use Firestore for production persistence (`STORAGE_PROVIDER=firestore` or `auto` with valid Firebase credentials). The local JSON adapter is intended for development and tests; on hosts with ephemeral filesystems, JSON changes can be lost on restart or redeploy.
+- Keep Firebase Authentication's Email/Password provider enabled. The health endpoint reports storage configuration but does not prove that live sign-in credentials work; verify login against the configured Firebase project after deployment.
 
 ### 2. Google Gemini AI Setup
 1. Get a free API key at [Google AI Studio](https://aistudio.google.com/).

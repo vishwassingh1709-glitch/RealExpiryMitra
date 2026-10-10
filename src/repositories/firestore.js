@@ -3,7 +3,8 @@
  * Uses Firebase Admin SDK with secure credential loading.
  */
 
-const admin = require("firebase-admin");
+const { applicationDefault, cert, getApps, initializeApp } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
 
 let db = null;
 let isInitialized = false;
@@ -28,16 +29,16 @@ function initializeFirestore() {
   // If service account credentials are provided via environment variables
   if (projectId && clientEmail && privateKey) {
     try {
-      if (!admin.apps.length) {
-        admin.initializeApp({
-          credential: admin.credential.cert({
+      if (!getApps().length) {
+        initializeApp({
+          credential: cert({
             projectId,
             clientEmail,
             privateKey
           })
         });
       }
-      db = admin.firestore();
+      db = getFirestore();
       db.settings({ ignoreUndefinedProperties: true });
       isInitialized = true;
       initError = null;
@@ -50,12 +51,12 @@ function initializeFirestore() {
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     // If a service account file path is specified
     try {
-      if (!admin.apps.length) {
-        admin.initializeApp({
-          credential: admin.credential.applicationDefault()
+      if (!getApps().length) {
+        initializeApp({
+          credential: applicationDefault()
         });
       }
-      db = admin.firestore();
+      db = getFirestore();
       db.settings({ ignoreUndefinedProperties: true });
       isInitialized = true;
       initError = null;

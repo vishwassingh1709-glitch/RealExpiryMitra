@@ -26,7 +26,7 @@ async function scan(req, res, next) {
       });
     }
 
-    const result = await processScan({ barcode, image, autoSave });
+    const result = await processScan({ barcode, image, autoSave, storeId: req.user.store_id });
     return res.status(result.httpStatus).json(result.body);
   } catch (error) {
     return next(error);
@@ -35,7 +35,7 @@ async function scan(req, res, next) {
 
 async function getScanHistory(req, res, next) {
   try {
-    const history = await scanHistoryService.getHistory(req.query.limit);
+    const history = await scanHistoryService.getHistory(req.query.limit, req.user.store_id);
     return res.json(history);
   } catch (error) {
     return next(error);

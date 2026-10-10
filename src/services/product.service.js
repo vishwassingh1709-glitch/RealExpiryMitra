@@ -5,7 +5,7 @@ const OFF_BASE =
   process.env.OPEN_FOOD_FACTS_BASE_URL ||
   "https://world.openfoodfacts.org/api/v2/product";
 
-async function findProduct(barcode) {
+async function findProduct(barcode, storeId = "store_default") {
   const normalizedBarcode = String(barcode || "").trim();
 
   if (!normalizedBarcode) return { status: "not_found" };
@@ -18,7 +18,7 @@ async function findProduct(barcode) {
   // Check for existing inventory records for this barcode
   let invItem = null;
   try {
-    invItem = await inventoryRepo.getByBarcode(normalizedBarcode);
+    invItem = await inventoryRepo.getByBarcode(normalizedBarcode, storeId);
   } catch (err) {
     console.warn(`[Inventory lookup warning]: ${err.message}`);
   }

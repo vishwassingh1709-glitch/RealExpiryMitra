@@ -55,6 +55,9 @@ async function recordSale(saleData) {
       }
 
       const invData = invDoc.data();
+      if ((invData.store_id || "store_default") !== store_id) {
+        throw new Error("Inventory item not found");
+      }
       const currentStock = Number(invData.quantity) || 0;
 
       if (currentStock < quantity) {
@@ -96,7 +99,9 @@ async function recordSale(saleData) {
 
   // Local JSON fallback with atomic check
   const inventoryItems = await read(INVENTORY_JSON_FILE, []);
-  const invIndex = inventoryItems.findIndex((item) => item.id === inventory_id);
+  const invIndex = inventoryItems.findIndex(
+    (item) => item.id === inventory_id && (item.store_id || "store_default") === store_id
+  );
 
   if (invIndex === -1) {
     throw new Error("Inventory item not found");
@@ -168,7 +173,7 @@ async function listSales(options = {}) {
   } else {
     sales = await read(JSON_FILE, []);
     if (store_id) {
-      sales = sales.filter((s) => !s.store_id || s.store_id === store_id);
+      sales = sales.filter((s) => (s.store_id || "store_default") === store_id);
     }
   }
 

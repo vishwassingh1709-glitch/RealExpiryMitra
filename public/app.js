@@ -9,10 +9,15 @@ const state = {
   currentScreen: "screen-splash",
   previousScreens: [],
   user: {
-    role: "shopkeeper",
-    shopName: "Sharma Store",
-    phone: "9876543210"
+    shopName: "",
+    email: ""
   },
+  authToken: (() => {
+    try { return sessionStorage.getItem("expirymitra.authToken") || ""; } catch (_) { return ""; }
+  })(),
+  authMode: "login",
+  isAuthenticating: false,
+  onboardingSlide: 0,
   inventory: [],
   inventoryFilter: "all",
   alertsFilter: "all",
@@ -20,7 +25,7 @@ const state = {
   currentProduct: null,
   saleSelectedProduct: null,
   saleQuantity: 5,
-  addQuantity: 50,
+  addQuantity: 1,
   cameraStream: null,
   zxingControls: null,
   zxingReader: null,
@@ -32,16 +37,6 @@ const state = {
   availableVideoDevices: [],
   cameraRequestId: 0
 };
-
-// Available product catalog presets for instant demo scanning matching reference image
-const PRESET_PRODUCTS = [
-  { barcode: "8901030700087", name: "Maggi Noodles", variant: "Masala, 70g", batch: "B560", productNo: "M102", expiry: "2026-11-05", qty: 50, price: 40, img: "assets/maggi-noodles.svg", category: "Snacks", daysLeft: 26 },
-  { barcode: "8901262010015", name: "Amul Milk (1L)", variant: "Taaza Toned Milk", batch: "B102", productNo: "B102", expiry: "2026-10-12", qty: 20, price: 50, img: "assets/amul-milk.svg", category: "Dairy", daysLeft: 2 },
-  { barcode: "8901063012111", name: "Britannia Biscuits", variant: "Good Day, 100g", batch: "B221", productNo: "B221", expiry: "2026-10-20", qty: 45, price: 30, img: "assets/britannia-biscuits.svg", category: "Snacks", daysLeft: 10 },
-  { barcode: "8902080000018", name: "Tropicana Juice", variant: "Mixed Fruit, 1L", batch: "B087", productNo: "B087", expiry: "2026-12-15", qty: 30, price: 120, img: "assets/tropicana-juice.svg", category: "Beverages", daysLeft: 18 },
-  { barcode: "8901648001019", name: "Mother Dairy Curd", variant: "Classic Dahi, 400g", batch: "B331", productNo: "B331", expiry: "2026-10-11", qty: 12, price: 35, img: "assets/mother-dairy-curd.svg", category: "Dairy", daysLeft: 1 },
-  { barcode: "8901764012210", name: "Coca Cola (500ml)", variant: "Pet Bottle", batch: "C112", productNo: "C112", expiry: "2026-12-28", qty: 18, price: 40, img: "assets/coca-cola.svg", category: "Beverages", daysLeft: 78 }
-];
 
 // Helper: Toast message
 function showToast(message, type = "info") {
@@ -124,16 +119,29 @@ function goBack() {
   }
 }
 
-// Clock updates
-function updateClock() {
-  const now = new Date();
-  let hours = now.getHours();
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const el = document.getElementById("status-time");
-  if (el) el.textContent = `${hours}:${minutes}`;
+async function apiFetch(input, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (state.authToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${state.authToken}`);
+  }
+  const response = await window.fetch(input, {
+    ...options,
+    headers,
+    credentials: "same-origin"
+  });
+
+  if (response.status === 401 && state.authToken) {
+    state.authToken = "";
+    try { sessionStorage.removeItem("expirymitra.authToken"); } catch (_) {}
+    state.user = { shopName: "", email: "" };
+    if (!new URL(input, window.location.href).pathname.startsWith("/api/auth/")) {
+      stopCamera();
+      showToast("Your session expired. Please sign in again.", "error");
+      showScreen("screen-auth");
+    }
+  }
+  return response;
 }
-setInterval(updateClock, 10000);
-updateClock();
 
 // =============================================================================
 // API INTEGRATION & DATA REFRESHERS
@@ -154,26 +162,21 @@ function resolveProductIcon(productName = "") {
 // 1. Dashboard Metrics & Needs Attention
 async function refreshDashboard() {
   try {
-    const res = await fetch("/api/inventory/summary");
+    const res = await apiFetch("/api/inventory/summary");
     if (!res.ok) throw new Error("Failed to load summary");
     const data = await res.json();
 
-    document.getElementById("stat-total-products").textContent = data.totalProducts ?? 128;
-    document.getElementById("stat-expiring-soon").textContent = data.expiringSoonCount ?? 7;
-    document.getElementById("stat-expired").textContent = data.expiredCount ?? 2;
-    document.getElementById("stat-low-stock").textContent = data.lowStockCount ?? 5;
+    document.getElementById("stat-total-products").textContent = data.totalProducts ?? 0;
+    document.getElementById("stat-expiring-soon").textContent = data.expiringSoonCount ?? 0;
+    document.getElementById("stat-expired").textContent = data.expiredCount ?? 0;
+    document.getElementById("stat-low-stock").textContent = data.lowStockCount ?? 0;
 
     const listContainer = document.getElementById("dash-attention-list");
     listContainer.innerHTML = "";
 
-    let items = data.attentionItems || [];
-    // If backend returns empty array (e.g. fresh DB), display standard reference attention items
+    const items = data.attentionItems || [];
     if (items.length === 0) {
-      items = [
-        { id: "demo_1", product_name: "Amul Milk (1L)", batch: "B102", quantity: 20, days_left: 2, expiry_date: "12 Oct 2026", price: 50 },
-        { id: "demo_2", product_name: "Britannia Biscuits", batch: "B221", quantity: 45, days_left: 10, expiry_date: "20 Oct 2026", price: 30 },
-        { id: "demo_3", product_name: "Tropicana Juice", batch: "B087", quantity: 30, days_left: 18, expiry_date: "15 Dec 2026", price: 120 }
-      ];
+      listContainer.innerHTML = '<p class="empty-state">No expiring inventory needs attention.</p>';
     }
 
     items.slice(0, 5).forEach((item) => {
@@ -192,25 +195,9 @@ async function refreshInventory() {
     let url = `/api/inventory?status=${encodeURIComponent(state.inventoryFilter)}`;
     if (searchVal) url += `&search=${encodeURIComponent(searchVal)}`;
 
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) throw new Error("Failed to fetch inventory");
-    let items = await res.json();
-
-    // If empty DB, supply full reference catalog
-    if ((!items || items.length === 0) && !searchVal && state.inventoryFilter === "all") {
-      items = PRESET_PRODUCTS.map((p, idx) => ({
-        id: `catalog_${idx}`,
-        product_name: p.name,
-        batch: p.batch,
-        quantity: p.qty,
-        expiry_date: p.expiry,
-        days_left: p.daysLeft,
-        barcode: p.barcode,
-        category: p.category,
-        brand: p.name.split(" ")[0],
-        price: p.price
-      }));
-    }
+    const items = await res.json();
 
     state.inventory = items;
     const container = document.getElementById("inventory-list");
@@ -236,22 +223,10 @@ async function refreshInventory() {
 // 3. Alerts Screen
 async function refreshAlerts() {
   try {
-    const res = await fetch("/api/inventory");
+    const res = await apiFetch("/api/inventory");
     let all = [];
     if (res.ok) {
       all = await res.json();
-    }
-
-    if (all.length === 0) {
-      all = PRESET_PRODUCTS.map((p, idx) => ({
-        id: `catalog_${idx}`,
-        product_name: p.name,
-        batch: p.batch,
-        quantity: p.qty,
-        expiry_date: p.expiry,
-        days_left: p.daysLeft,
-        price: p.price
-      }));
     }
 
     const critical = all.filter((i) => i.days_left >= 0 && i.days_left <= 2);
@@ -259,10 +234,10 @@ async function refreshAlerts() {
     const expired = all.filter((i) => i.status === "expired" || i.days_left < 0);
 
     const totalCount = critical.length + soon.length + expired.length;
-    document.getElementById("pill-alert-all").textContent = `All (${totalCount || 9})`;
-    document.getElementById("pill-alert-critical").textContent = `Critical (${critical.length || 2})`;
-    document.getElementById("pill-alert-soon").textContent = `Soon (${soon.length || 5})`;
-    document.getElementById("pill-alert-expired").textContent = `Expired (${expired.length || 2})`;
+    document.getElementById("pill-alert-all").textContent = `All (${totalCount})`;
+    document.getElementById("pill-alert-critical").textContent = `Critical (${critical.length})`;
+    document.getElementById("pill-alert-soon").textContent = `Soon (${soon.length})`;
+    document.getElementById("pill-alert-expired").textContent = `Expired (${expired.length})`;
 
     let displayItems = [];
     if (state.alertsFilter === "all") displayItems = [...critical, ...soon, ...expired];
@@ -357,7 +332,7 @@ function openProductDetails(item) {
   state.currentProduct = item;
 
   document.getElementById("detail-prod-name").textContent = item.product_name || "Unknown Product";
-  document.getElementById("detail-prod-variant").textContent = item.brand || item.category || "Masala, 70g";
+  document.getElementById("detail-prod-variant").textContent = item.brand || item.category || "";
   document.getElementById("detail-prod-img").src = resolveProductIcon(item.product_name);
 
   const badgeEl = document.getElementById("detail-prod-badge");
@@ -372,12 +347,12 @@ function openProductDetails(item) {
     badgeEl.innerHTML = "&#9679; In Stock";
   }
 
-  document.getElementById("tile-batch").textContent = item.batch || "B560";
-  document.getElementById("tile-expiry").textContent = item.expiry_date || "05 Nov 2026";
-  document.getElementById("tile-quantity").textContent = `${item.quantity || 50} units`;
-  document.getElementById("tile-days-left").textContent = item.days_left !== undefined ? `${item.days_left} days` : "26 days";
-  document.getElementById("tile-category").textContent = item.category || "Snacks";
-  document.getElementById("tile-barcode").textContent = item.barcode || item.productNo || "M102";
+  document.getElementById("tile-batch").textContent = item.batch || "—";
+  document.getElementById("tile-expiry").textContent = item.expiry_date || "—";
+  document.getElementById("tile-quantity").textContent = `${Number(item.quantity) || 0} units`;
+  document.getElementById("tile-days-left").textContent = item.days_left !== undefined ? `${item.days_left} days` : "—";
+  document.getElementById("tile-category").textContent = item.category || "—";
+  document.getElementById("tile-barcode").textContent = item.barcode || "—";
 
   // Reset tab to Overview
   setProductDetailsTab("overview");
@@ -406,10 +381,10 @@ function setProductDetailsTab(tabName) {
     grid.style.display = "grid";
   } else if (tabName === "history") {
     grid.style.display = "grid";
-    showToast(`Stock History: Received ${state.currentProduct?.quantity || 50} units in Batch ${state.currentProduct?.batch || 'B560'}`, "info");
+    showToast("Stock receipt history is not available for this item yet.", "info");
   } else if (tabName === "sales") {
     grid.style.display = "grid";
-    showToast(`Recent sales for ${state.currentProduct?.product_name || 'this item'}: 5 units sold today`, "info");
+    showToast("Item-level sales history is not available yet.", "info");
   }
 }
 
@@ -418,26 +393,22 @@ async function refreshSales() {
   try {
     const range = state.salesRange || "today";
     const [summaryRes, listRes] = await Promise.all([
-      fetch(`/api/sales/summary?range=${range}`),
-      fetch(`/api/sales?range=${range}`)
+      apiFetch(`/api/sales/summary?range=${range}`),
+      apiFetch(`/api/sales?range=${range}`)
     ]);
 
-    const summary = summaryRes.ok ? await summaryRes.json() : { totalSales: 18, totalRevenue: 1440 };
+    const summary = summaryRes.ok ? await summaryRes.json() : { totalSales: 0, totalRevenue: 0 };
     const salesList = listRes.ok ? await listRes.json() : [];
 
-    document.getElementById("sales-stat-count").textContent = summary.totalSales ?? 18;
-    document.getElementById("sales-stat-revenue").innerHTML = `&#8377;${(summary.totalRevenue ?? 1440).toLocaleString("en-IN")}`;
+    document.getElementById("sales-stat-count").textContent = summary.totalSales ?? 0;
+    document.getElementById("sales-stat-revenue").innerHTML = `&#8377;${(summary.totalRevenue ?? 0).toLocaleString("en-IN")}`;
 
     const container = document.getElementById("sales-recent-list");
     container.innerHTML = "";
 
-    let displaySales = salesList;
-    if (!displaySales || displaySales.length === 0) {
-      displaySales = [
-        { product_name: "Amul Milk (1L)", quantity_sold: 5, total_amount: 250, timestamp: "2026-10-10T10:30:00Z" },
-        { product_name: "Maggi Noodles", quantity_sold: 3, total_amount: 120, timestamp: "2026-10-10T11:15:00Z" },
-        { product_name: "Coca Cola (500ml)", quantity_sold: 2, total_amount: 80, timestamp: "2026-10-10T12:05:00Z" }
-      ];
+    const displaySales = salesList || [];
+    if (displaySales.length === 0) {
+      container.innerHTML = '<p class="empty-state">No sales recorded for this period.</p>';
     }
 
     displaySales.slice(0, 15).forEach((sale) => {
@@ -445,13 +416,13 @@ async function refreshSales() {
       div.className = "product-item";
 
       const icon = resolveProductIcon(sale.product_name);
-      const timeStr = sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "10:30 AM";
-      const dateStr = sale.timestamp ? new Date(sale.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : "10 Oct";
+      const timeStr = sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+      const dateStr = sale.timestamp ? new Date(sale.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : "";
 
       div.innerHTML = `
         <div class="product-item-left">
-          <div class="product-thumb">
-            <img src="${icon}" alt="${sale.product_name}">
+        <div class="product-thumb">
+            <img src="${icon}" alt="${sale.product_name}" width="48" height="48" loading="lazy" decoding="async">
           </div>
           <div class="product-info">
             <div class="product-name">${sale.product_name}</div>
@@ -475,9 +446,9 @@ function openRecordSale(item) {
   state.saleSelectedProduct = item;
   state.saleQuantity = Math.min(5, Math.max(1, item.quantity || 5));
 
-  document.getElementById("sale-prod-name").textContent = item.product_name || "Amul Milk (1L)";
-  document.getElementById("sale-prod-batch").textContent = item.batch ? `Batch ${item.batch}` : "Batch B102";
-  document.getElementById("sale-prod-stock").textContent = `${item.quantity || 20} units`;
+  document.getElementById("sale-prod-name").textContent = item.product_name || "Unknown product";
+  document.getElementById("sale-prod-batch").textContent = item.batch ? `Batch ${item.batch}` : "No batch recorded";
+  document.getElementById("sale-prod-stock").textContent = `${Number(item.quantity) || 0} units`;
   document.getElementById("sale-prod-img").src = resolveProductIcon(item.product_name);
 
   const badge = document.getElementById("sale-prod-badge");
@@ -521,14 +492,13 @@ async function confirmSale() {
   confirmBtn.textContent = "Processing Sale...";
 
   try {
-    const res = await fetch("/api/sales", {
+    const res = await apiFetch("/api/sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         inventory_id: item.id || "item_default",
         quantity_sold: qty,
-        unit_price: unitPrice,
-        store_id: "store_default"
+        unit_price: unitPrice
       })
     });
 
@@ -863,7 +833,7 @@ async function lookupBarcodeInBackend(barcode) {
   const statusText = document.getElementById("scanner-status-text");
 
   try {
-    const res = await fetch(`/api/products/barcode/${encodeURIComponent(barcode)}`);
+    const res = await apiFetch(`/api/products/barcode/${encodeURIComponent(barcode)}`);
     const data = await res.json();
 
     if (res.ok && data.product) {
@@ -885,17 +855,13 @@ async function lookupBarcodeInBackend(barcode) {
       document.getElementById("found-prod-variant").textContent = prodVariant;
       document.getElementById("found-prod-img").src = prodImg;
 
-      // Pre-fill form fields
+      // Prefill only the product identity. Existing inventory metadata belongs
+      // to the prior batch and must not be copied into a newly scanned lot.
       document.getElementById("add-product-barcode").value = barcode;
-      document.getElementById("add-product-batch").value = prod.batch || ("B" + Math.floor(100 + Math.random() * 900));
-
-      const qty = prod.quantity !== undefined ? Number(prod.quantity) : 1;
-      document.getElementById("add-qty-val").textContent = qty > 0 ? qty : 1;
-      state.addQuantity = qty > 0 ? qty : 1;
-
-      if (prod.expiryDate || prod.expiry_date) {
-        document.getElementById("add-product-expiry").value = prod.expiryDate || prod.expiry_date;
-      }
+      document.getElementById("add-product-batch").value = "";
+      document.getElementById("add-product-expiry").value = "";
+      document.getElementById("add-qty-val").textContent = "1";
+      state.addQuantity = 1;
 
       showToast(`✓ Barcode detected: ${barcode} (${prodName})`, "success");
     } else {
@@ -968,42 +934,19 @@ function stopCamera() {
   state.isProcessingScan = false;
 }
 
-// Preset Barcode Scanner Demo (preserves full demo workflow)
-function applyBarcodePreset(preset) {
-  stopCamera();
-  document.getElementById("add-product-barcode").value = preset.barcode || preset.productNo || "B560";
-  document.getElementById("add-product-batch").value = preset.batch;
-  document.getElementById("add-product-expiry").value = preset.expiry;
-  document.getElementById("add-qty-val").textContent = preset.qty;
-  state.addQuantity = preset.qty;
-
-  document.getElementById("found-prod-name").textContent = preset.name;
-  document.getElementById("found-prod-variant").textContent = preset.variant;
-  document.getElementById("found-prod-img").src = preset.img;
-
-  const notFoundCard = document.getElementById("card-product-not-found");
-  if (notFoundCard) notFoundCard.style.display = "none";
-
-  const foundCard = document.getElementById("card-product-found");
-  if (foundCard) foundCard.style.display = "block";
-
-  playBeep();
-  showToast(`Detected preset barcode: ${preset.barcode}`, "success");
-}
-
 // 7. Store Profile & Settings
 async function refreshProfile() {
   try {
-    const res = await fetch("/api/store");
+    const res = await apiFetch("/api/store");
     if (!res.ok) return;
     const data = await res.json();
-    document.getElementById("prof-store-name").textContent = data.store_name || "Sharma Store";
-    document.getElementById("prof-store-phone").textContent = data.phone || "9876543210";
-    document.getElementById("dash-store-name").textContent = data.store_name || "Sharma Store";
+    document.getElementById("prof-store-name").textContent = data.store_name || "My Store";
+    document.getElementById("prof-store-phone").textContent = data.phone || "";
+    document.getElementById("dash-store-name").textContent = data.store_name || "My Store";
 
-    document.getElementById("store-edit-name").value = data.store_name || "Sharma Store";
-    document.getElementById("store-edit-phone").value = data.phone || "9876543210";
-    document.getElementById("store-edit-address").value = data.address || "Shop No. 4, Market Complex";
+    document.getElementById("store-edit-name").value = data.store_name || "My Store";
+    document.getElementById("store-edit-phone").value = data.phone || "";
+    document.getElementById("store-edit-address").value = data.address || "";
   } catch (err) {
     console.warn("[Profile]", err.message);
   }
@@ -1015,7 +958,7 @@ async function saveStoreProfile() {
   const address = document.getElementById("store-edit-address").value.trim();
 
   try {
-    const res = await fetch("/api/store", {
+    const res = await apiFetch("/api/store", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ store_name: name, phone, address })
@@ -1065,11 +1008,17 @@ async function handleScanFileUpload(file) {
 
     try {
       showToast("Analyzing expiry label with OCR & AI...", "info");
-      const res = await fetch("/api/scan", {
+      const barcode = document.getElementById("add-product-barcode")?.value?.trim();
+      if (!barcode) {
+        showToast("Scan or enter the product barcode before analyzing the expiry label.", "error");
+        return;
+      }
+
+      const res = await apiFetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          barcode: document.getElementById("add-product-barcode")?.value || "8901234567890",
+          barcode,
           image: base64Data
         })
       });
@@ -1079,16 +1028,16 @@ async function handleScanFileUpload(file) {
 
       // Display in Screen 9 Scan Result
       document.getElementById("scanned-image-preview").src = base64Data;
-      document.getElementById("badge-scanned-barcode").textContent = data.product?.barcode || "8901234567890";
-      document.getElementById("res-prod-name").textContent = data.product?.name || "Britannia Biscuits";
-      document.getElementById("res-prod-variant").textContent = data.product?.brand || "Good Day, 100g";
+      document.getElementById("badge-scanned-barcode").textContent = data.product?.barcode || barcode;
+      document.getElementById("res-prod-name").textContent = data.product?.name || "Unknown product";
+      document.getElementById("res-prod-variant").textContent = data.product?.brand || data.product?.category || "";
 
       if (data.expiry) {
-        document.getElementById("res-raw-text").textContent = data.expiry.raw_text || "MFG 12/06/2024 EXP 11/06/2026 BATCH A24B7";
-        document.getElementById("res-mfg-date").value = data.expiry.mfg_date || "2024-06-12";
-        document.getElementById("res-expiry-date").value = data.expiry.expiry_date || "2026-06-11";
-        document.getElementById("res-batch").value = data.expiry.batch || "A24B7";
-        const confidencePct = Math.round((data.expiry.confidence || 0.96) * 100);
+        document.getElementById("res-raw-text").textContent = data.expiry.raw_text || "";
+        document.getElementById("res-mfg-date").value = data.expiry.mfg_date || "";
+        document.getElementById("res-expiry-date").value = data.expiry.expiry_date || "";
+        document.getElementById("res-batch").value = data.expiry.batch || "";
+        const confidencePct = Math.round((data.expiry.confidence || 0) * 100);
         document.getElementById("res-confidence-badge").textContent = `${confidencePct}% Confident`;
       }
 
@@ -1116,55 +1065,226 @@ function closeModal(id) {
 // =============================================================================
 // DOM EVENT LISTENERS INITIALIZATION
 // =============================================================================
+function setOnboardingSlide(index) {
+  const slides = [...document.querySelectorAll(".splash-slide")];
+  const dots = [...document.querySelectorAll(".splash-dot")];
+  if (!slides.length) return;
+
+  const nextIndex = Math.max(0, Math.min(index, slides.length - 1));
+  state.onboardingSlide = nextIndex;
+  slides.forEach((slide, slideIndex) => {
+    const active = slideIndex === nextIndex;
+    slide.classList.toggle("active", active);
+    slide.setAttribute("aria-hidden", String(!active));
+    slide.inert = !active;
+  });
+  dots.forEach((dot, dotIndex) => {
+    const active = dotIndex === nextIndex;
+    dot.classList.toggle("active", active);
+    dot.setAttribute("aria-current", String(active));
+  });
+  const previous = document.getElementById("splash-previous");
+  const next = document.getElementById("splash-next");
+  if (previous) previous.disabled = nextIndex === 0;
+  if (next) next.disabled = nextIndex === slides.length - 1;
+}
+
+function setAuthMode(mode) {
+  const isSignup = mode === "signup";
+  state.authMode = isSignup ? "signup" : "login";
+  document.getElementById("auth-tab-login")?.classList.toggle("active", !isSignup);
+  document.getElementById("auth-tab-login")?.setAttribute("aria-selected", String(!isSignup));
+  document.getElementById("auth-tab-signup")?.classList.toggle("active", isSignup);
+  document.getElementById("auth-tab-signup")?.setAttribute("aria-selected", String(isSignup));
+  document.getElementById("group-shop-name")?.classList.toggle("is-visible", isSignup);
+  document.getElementById("group-store-name")?.classList.toggle("is-visible", isSignup);
+  document.getElementById("group-confirm-password")?.classList.toggle("is-visible", isSignup);
+  document.getElementById("auth-shop-name").required = isSignup;
+  document.getElementById("auth-store-name").required = isSignup;
+  document.getElementById("auth-confirm-password").required = isSignup;
+  document.getElementById("auth-password").autocomplete = isSignup ? "new-password" : "current-password";
+  document.getElementById("auth-title").textContent = isSignup ? "Create your account" : "Welcome back";
+  document.getElementById("auth-description").textContent = isSignup
+    ? "Set up your store workspace."
+    : "Sign in to continue to your store.";
+  document.getElementById("btn-login-submit").textContent = isSignup ? "Create Account" : "Sign In";
+  document.getElementById("auth-switch-copy").textContent = isSignup
+    ? "Already have an account?"
+    : "New to ExpiryMitra?";
+  document.getElementById("btn-switch-signup").textContent = isSignup ? "Sign In" : "Create Account";
+  document.getElementById("auth-feedback").textContent = "";
+  document.getElementById("auth-feedback").classList.remove("success");
+}
+
+async function submitAuthForm(event) {
+  event.preventDefault();
+  if (state.isAuthenticating) return;
+
+  const name = document.getElementById("auth-shop-name").value.trim();
+  const storeName = document.getElementById("auth-store-name").value.trim();
+  const email = document.getElementById("auth-identifier").value.trim();
+  const password = document.getElementById("auth-password").value;
+  const confirmation = document.getElementById("auth-confirm-password").value;
+  const feedback = document.getElementById("auth-feedback");
+  const submitButton = document.getElementById("btn-login-submit");
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  feedback.classList.remove("success");
+  if (state.authMode === "signup" && (!name || !storeName)) {
+    feedback.textContent = "Enter your name and store name to create an account.";
+    return;
+  }
+  if (!emailIsValid) {
+    feedback.textContent = "Enter a valid email address.";
+    document.getElementById("auth-identifier").focus();
+    return;
+  }
+  if (password.length < 6) {
+    feedback.textContent = "Password must contain at least 6 characters.";
+    document.getElementById("auth-password").focus();
+    return;
+  }
+  if (state.authMode === "signup" && password !== confirmation) {
+    feedback.textContent = "The passwords do not match.";
+    document.getElementById("auth-confirm-password").focus();
+    return;
+  }
+
+  state.isAuthenticating = true;
+  submitButton.disabled = true;
+  submitButton.textContent = "Please wait…";
+  feedback.textContent = "";
+
+  try {
+    const response = await apiFetch(`/api/auth/${state.authMode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        store_name: storeName,
+        email,
+        password
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.idToken || !result.user) {
+      throw new Error(result.message || "Authentication could not be completed.");
+    }
+
+    state.authToken = result.idToken;
+    state.user = {
+      shopName: state.authMode === "signup" ? storeName : "",
+      email: result.user.email || email
+    };
+    try { sessionStorage.setItem("expirymitra.authToken", state.authToken); } catch (_) {}
+
+    try {
+      const storeResponse = await apiFetch("/api/store");
+      if (storeResponse.ok) {
+        const store = await storeResponse.json();
+        state.user.shopName = store.store_name || state.user.shopName;
+        const storeNameElement = document.getElementById("dash-store-name");
+        if (storeNameElement) storeNameElement.textContent = state.user.shopName;
+      }
+    } catch (_) {}
+
+    document.getElementById("user-avatar-initials").textContent =
+      (name || result.user.displayName || email).split(/[\s@]+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+    document.getElementById("auth-password").value = "";
+    document.getElementById("auth-confirm-password").value = "";
+    showToast(state.authMode === "signup" ? "Your store account is ready." : "Signed in successfully.", "success");
+    showScreen("screen-dashboard");
+  } catch (error) {
+    feedback.textContent = error.message || "Could not reach the authentication service.";
+  } finally {
+    state.isAuthenticating = false;
+    submitButton.disabled = false;
+    submitButton.textContent = state.authMode === "signup" ? "Create Account" : "Sign In";
+  }
+}
+
+async function resumeAuthenticatedSession() {
+  try {
+    const response = await apiFetch("/api/store");
+    if (!response.ok) return;
+    const store = await response.json();
+    state.user.shopName = store.store_name || "My Store";
+    state.user.email = store.email || "";
+    const storeNameElement = document.getElementById("dash-store-name");
+    if (storeNameElement) storeNameElement.textContent = state.user.shopName;
+    const initials = (store.owner_name || state.user.email || "Store owner")
+      .split(/[\s@]+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+    document.getElementById("user-avatar-initials").textContent = initials;
+    history.replaceState({ expiryMitraScreen: "screen-dashboard" }, "", window.location.href);
+    showScreen("screen-dashboard", false);
+  } catch (_) {
+    // A valid session can still open the welcome screen while the network is unavailable.
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  if (!history.state?.expiryMitraScreen) {
+    history.replaceState({ expiryMitraScreen: "screen-splash" }, "", window.location.href);
+  }
+  if (state.authToken) resumeAuthenticatedSession();
+  window.addEventListener("popstate", (event) => {
+    const screenId = event.state?.expiryMitraScreen || "screen-splash";
+    if (["screen-splash", "screen-auth"].includes(screenId)) showScreen(screenId, false);
+  });
+
+  const carousel = document.getElementById("splash-carousel");
+  let swipeStart = null;
+  if (carousel) {
+    setOnboardingSlide(0);
+    document.getElementById("splash-previous")?.addEventListener("click", () => setOnboardingSlide(state.onboardingSlide - 1));
+    document.getElementById("splash-next")?.addEventListener("click", () => setOnboardingSlide(state.onboardingSlide + 1));
+    document.querySelectorAll(".splash-dot").forEach((dot) => {
+      dot.addEventListener("click", () => setOnboardingSlide(Number(dot.dataset.slideTo)));
+    });
+    carousel.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button")) return;
+      swipeStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      carousel.setPointerCapture?.(event.pointerId);
+    });
+    carousel.addEventListener("pointerup", (event) => {
+      if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
+      const deltaX = event.clientX - swipeStart.x;
+      const deltaY = event.clientY - swipeStart.y;
+      swipeStart = null;
+      if (Math.abs(deltaX) > 42 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        setOnboardingSlide(state.onboardingSlide + (deltaX < 0 ? 1 : -1));
+      }
+    });
+    carousel.addEventListener("pointercancel", () => { swipeStart = null; });
+    carousel.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight") setOnboardingSlide(state.onboardingSlide + 1);
+      if (event.key === "ArrowLeft") setOnboardingSlide(state.onboardingSlide - 1);
+    });
+  }
+
   // Splash "Get Started"
   document.getElementById("btn-splash-start")?.addEventListener("click", () => {
+    history.pushState({ expiryMitraScreen: "screen-auth" }, "", window.location.href);
     showScreen("screen-auth");
   });
 
-  // Auth Screen Login
-  document.getElementById("btn-login-submit")?.addEventListener("click", () => {
-    const shopName = document.getElementById("auth-shop-name")?.value?.trim() || "Sharma Store";
-    state.user.shopName = shopName;
-    showToast(`Welcome back, ${shopName}!`, "success");
-    showScreen("screen-dashboard");
-  });
-
-  document.getElementById("btn-google-auth")?.addEventListener("click", () => {
-    showToast("Signed in via Google", "success");
-    showScreen("screen-dashboard");
-  });
-
+  document.getElementById("auth-form")?.addEventListener("submit", submitAuthForm);
+  setAuthMode("login");
+  document.getElementById("auth-tab-login")?.addEventListener("click", () => setAuthMode("login"));
+  document.getElementById("auth-tab-signup")?.addEventListener("click", () => setAuthMode("signup"));
   document.getElementById("btn-switch-signup")?.addEventListener("click", () => {
-    showToast("Please enter your store details to register", "info");
+    setAuthMode(state.authMode === "login" ? "signup" : "login");
   });
 
   document.getElementById("btn-toggle-password")?.addEventListener("click", () => {
     const passInput = document.getElementById("auth-password");
     if (passInput) {
       passInput.type = passInput.type === "password" ? "text" : "password";
+      document.getElementById("btn-toggle-password").setAttribute(
+        "aria-label",
+        passInput.type === "password" ? "Show password" : "Hide password"
+      );
     }
-  });
-
-  // Role Toggle
-  document.getElementById("role-shopkeeper-btn")?.addEventListener("click", (e) => {
-    e.target.classList.add("active");
-    e.target.setAttribute("aria-selected", "true");
-    const custBtn = document.getElementById("role-customer-btn");
-    custBtn?.classList.remove("active");
-    custBtn?.setAttribute("aria-selected", "false");
-    state.user.role = "shopkeeper";
-    document.getElementById("group-shop-name").style.display = "block";
-  });
-
-  document.getElementById("role-customer-btn")?.addEventListener("click", (e) => {
-    e.target.classList.add("active");
-    e.target.setAttribute("aria-selected", "true");
-    const shopBtn = document.getElementById("role-shopkeeper-btn");
-    shopBtn?.classList.remove("active");
-    shopBtn?.setAttribute("aria-selected", "false");
-    state.user.role = "customer";
-    document.getElementById("group-shop-name").style.display = "none";
   });
 
   // Bottom Navigation Buttons
@@ -1298,13 +1418,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (file) handleScanFileUpload(file);
   });
 
-  // Preset Barcode Demo cycling
-  let presetIndex = 0;
-  document.getElementById("btn-demo-barcode")?.addEventListener("click", () => {
-    applyBarcodePreset(PRESET_PRODUCTS[presetIndex]);
-    presetIndex = (presetIndex + 1) % PRESET_PRODUCTS.length;
-  });
-
   // Edit Found button in Add Product screen
   document.getElementById("btn-edit-found")?.addEventListener("click", () => {
     const name = prompt("Enter product name:", document.getElementById("found-prod-name").textContent);
@@ -1340,7 +1453,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const res = await fetch("/api/inventory/confirm", {
+      const res = await apiFetch("/api/inventory/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1374,7 +1487,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const minStock = Number(document.getElementById("manual-min-stock").value) || 5;
 
     try {
-      const res = await fetch("/api/inventory/manual", {
+      const res = await apiFetch("/api/inventory/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1422,7 +1535,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const newQty = (state.currentProduct.quantity || 0) + unitsToAdd;
     try {
-      const res = await fetch(`/api/inventory/${state.currentProduct.id}`, {
+      const res = await apiFetch(`/api/inventory/${state.currentProduct.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quantity: newQty })
@@ -1465,7 +1578,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const res = await fetch(`/api/inventory/${id}`, {
+      const res = await apiFetch(`/api/inventory/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates)
@@ -1486,7 +1599,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!confirm(`Are you sure you want to delete ${state.currentProduct.product_name}?`)) return;
 
     try {
-      const res = await fetch(`/api/inventory/${state.currentProduct.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/inventory/${state.currentProduct.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete item");
       showToast("Product deleted from inventory", "success");
       showScreen("screen-inventory");
@@ -1534,7 +1647,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const qty = Number(document.getElementById("res-quantity").value) || 1;
 
     try {
-      const res = await fetch("/api/inventory/confirm", {
+      const res = await apiFetch("/api/inventory/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1581,7 +1694,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("menu-system-health")?.addEventListener("click", async () => {
     openModal("modal-health");
     try {
-      const res = await fetch("/api/health");
+      const res = await apiFetch("/api/health");
       const data = await res.json();
       const content = document.getElementById("health-content");
       content.innerHTML = `
@@ -1611,7 +1724,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("menu-logout")?.addEventListener("click", () => {
-    showToast("Logged out successfully", "info");
+    state.authToken = "";
+    state.user = { shopName: "", email: "" };
+    try { sessionStorage.removeItem("expirymitra.authToken"); } catch (_) {}
+    setAuthMode("login");
+    showToast("Signed out successfully.", "info");
     showScreen("screen-auth");
   });
 

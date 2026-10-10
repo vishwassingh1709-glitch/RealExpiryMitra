@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80" role="img" aria-labelledby="title">
+  <title id="title">ExpiryMitra</title>
+  <defs>
+    <linearGradient id="emGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#102A43"/>
+      <stop offset="100%" stop-color="#243B53"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7A00"/>
+      <stop offset="100%" stop-color="#FF5A0A"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(10 15)">
+    <rect x="0" y="0" width="14" height="56" rx="3" fill="url(#emGrad)"/>
+    <rect x="18" y="0" width="8" height="56" rx="2" fill="url(#emGrad)"/>
+    <rect x="30" y="0" width="4" height="56" rx="1.5" fill="url(#emGrad)"/>
+    <rect x="38" y="0" width="10" height="56" rx="2" fill="url(#emGrad)"/>
+    <rect x="0" y="0" width="48" height="12" rx="3" fill="url(#emGrad)"/>
+    <rect x="0" y="22" width="36" height="10" rx="2" fill="url(#emGrad)"/>
+    <rect x="0" y="44" width="48" height="12" rx="3" fill="url(#emGrad)"/>
+    <path d="M58 56V0l20 34L98 0v56H86V22l-8 14-8-14v34z" fill="url(#emGrad)"/>
+    <circle cx="98" cy="12" r="5" fill="url(#orangeGrad)"/>
+    <line x1="88" y1="2" x2="108" y2="22" stroke="url(#orangeGrad)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="98" y1="-4" x2="98" y2="28" stroke="url(#orangeGrad)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="106" cy="2" r="2.5" fill="#FF7A00"/>
+    <circle cx="90" cy="-2" r="2" fill="#FF7A00"/>
+  </g>
+  <text x="135" y="51" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-weight="800" font-size="28" fill="#102A43" letter-spacing="-0.5">Expiry<tspan fill="#FF5A0A">Mitra</tspan></text>
+</svg>
