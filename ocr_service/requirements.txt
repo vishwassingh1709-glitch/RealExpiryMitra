@@ -1,0 +1,8 @@
+# PaddleOCR 3.x documented PaddlePaddle inference runtime (CPU).
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+Pillow==11.2.1
+paddlepaddle==3.3.0
+paddleocr==3.5.0
+httpx==0.28.1  # TestClient dependency for the service's unit tests.

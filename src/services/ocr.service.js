@@ -158,6 +158,44 @@ async function callOcrSpaceApi(image) {
   }
 }
 
+/** Sends the already-validated image to the optional private PaddleOCR service. */
+async function callPaddleOcrService(image) {
+  const serviceUrl = process.env.PADDLE_OCR_URL;
+  if (!serviceUrl) throw new OcrError("PaddleOCR service is not configured", 503, false);
+  const timeoutMs = Math.min(getTimeoutMs(), Number(process.env.PADDLE_OCR_TIMEOUT_MS) || 20000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const imageBuffer = extractImageBuffer(image);
+    const mime = /^data:(image\/(?:jpeg|png|webp));base64,/i.exec(image)?.[1] || "image/jpeg";
+    const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+    const form = new FormData();
+    form.append("file", new Blob([imageBuffer], { type: mime }), `date-label.${extension}`);
+    const headers = {};
+    if (process.env.PADDLE_OCR_TOKEN) headers.Authorization = `Bearer ${process.env.PADDLE_OCR_TOKEN}`;
+    const response = await fetch(serviceUrl, { method: "POST", body: form, headers, signal: controller.signal });
+    if (!response.ok) throw new OcrError(`PaddleOCR service returned HTTP ${response.status}`, response.status, response.status >= 500);
+    const payload = await response.json();
+    if (!Array.isArray(payload.lines)) throw new OcrError("Invalid response from PaddleOCR service", 502, true);
+    const lines = payload.lines
+      .filter((line) => line && typeof line.text === "string" && line.text.trim())
+      .map((line) => ({ text: line.text.trim(), confidence: Number.isFinite(line.confidence) ? line.confidence : null }));
+    const scoredLines = lines.filter((line) => line.confidence !== null);
+    return {
+      rawText: lines.map((line) => line.text).join("\n"),
+      lines,
+      confidence: scoredLines.length ? scoredLines.reduce((sum, line) => sum + line.confidence, 0) / scoredLines.length : 0,
+      source: "paddleocr"
+    };
+  } catch (error) {
+    if (error.name === "AbortError") throw new OcrError("PaddleOCR request timed out", 504, true);
+    if (error instanceof OcrError) throw error;
+    throw new OcrError("PaddleOCR service is unavailable", 502, true);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Extracts raw image buffer from data URL or base64 string for Tesseract.
  */
@@ -238,7 +276,18 @@ async function extractText(image) {
   let result;
   let ocrError = null;
 
-  if (ocrProvider === "ocr_space" || (process.env.OCR_API_KEY && ocrProvider !== "tesseract")) {
+  // An explicitly configured PaddleOCR service is preferred. Retain the
+  // existing OCR.space/Tesseract providers as graceful fallbacks.
+  if (process.env.PADDLE_OCR_URL) {
+    try {
+      result = await callPaddleOcrService(image);
+    } catch (err) {
+      ocrError = err;
+      console.warn(`[OCR] PaddleOCR unavailable (${err.message}); trying the configured fallback.`);
+    }
+  }
+
+  if (!result && (ocrProvider === "ocr_space" || (process.env.OCR_API_KEY && ocrProvider !== "tesseract"))) {
     try {
       result = await callOcrSpaceApi(image);
     } catch (err) {
@@ -253,7 +302,7 @@ async function extractText(image) {
         }
       }
     }
-  } else {
+  } else if (!result && Tesseract) {
     // Default to Tesseract.js (open-source & free)
     try {
       result = await callTesseract(image);
@@ -262,6 +311,9 @@ async function extractText(image) {
       console.error(`[OCR] Tesseract failed: ${err.message}`);
     }
   }
+
+  // A successful configured fallback supersedes a preceding Paddle failure.
+  if (result) ocrError = null;
 
   if (ocrError) {
     throw ocrError;
@@ -277,7 +329,8 @@ async function extractText(image) {
     rawText: result.rawText,
     normalizedText,
     confidence: result.confidence ?? 0.85,
-    source: result.source
+    source: result.source,
+    lines: result.lines
   };
 }
 
@@ -285,6 +338,7 @@ module.exports = {
   extractText,
   normalizeOcrText,
   callOcrSpaceApi,
+  callPaddleOcrService,
   callTesseract,
   isImageData,
   OcrError

@@ -49,7 +49,7 @@ function getHealthStatus() {
   const storageProvider = isFirestoreActive() ? "firestore" : "json";
 
   const ocrProvider =
-    process.env.OCR_PROVIDER ||
+    (process.env.PADDLE_OCR_URL ? "paddleocr" : "") || process.env.OCR_PROVIDER ||
     (process.env.OCR_API_KEY ? "ocr_space" : "tesseract");
 
   const aiProvider = process.env.GEMINI_API_KEY
@@ -67,6 +67,7 @@ function getHealthStatus() {
 
     ocr: {
       activeProvider: ocrProvider,
+      paddleOcrConfigured: Boolean(process.env.PADDLE_OCR_URL),
       tesseractAvailable: true,
       ocrSpaceConfigured: Boolean(process.env.OCR_API_KEY),
     },

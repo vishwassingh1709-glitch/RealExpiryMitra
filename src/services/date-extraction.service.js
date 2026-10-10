@@ -31,11 +31,13 @@ async function extractDates({ barcode = "", image, imageVariants = [] } = {}) {
   const ocrRuns = [image, ...imageVariants.slice(0, 1).filter(isImageData)];
   const ocrCandidates = [];
   const rawTexts = [];
+  const ocrLines = [];
   let ocrSource = null;
   for (let index = 0; index < ocrRuns.length; index += 1) {
     try {
       const result = await extractText(ocrRuns[index]);
       ocrSource ||= result.source;
+      if (Array.isArray(result.lines)) ocrLines.push(...result.lines);
       if (result.rawText) {
         rawTexts.push(result.rawText);
         const parsed = parseDateLabelText(result.normalizedText || result.rawText, result.source || "ocr");
@@ -68,6 +70,7 @@ async function extractDates({ barcode = "", image, imageVariants = [] } = {}) {
     candidates,
     raw_visible_text: geminiResult.raw_visible_text || rawTexts.filter((text) => !text.startsWith("OCR unavailable:")).join("\n").slice(0, 2000),
     sources: { ocr: ocrSource, gemini: geminiResult.candidates.length ? "gemini_image" : null, gs1: gs1Candidates.length > 0 },
+    ocr_lines: ocrLines.slice(0, 200),
     warnings: [...(geminiResult.error ? [geminiResult.error] : []), ...candidates.filter((item) => item.uncertain).map((item) => item.reason || `${item.date_type} needs review`)],
     requires_confirmation: true
   };

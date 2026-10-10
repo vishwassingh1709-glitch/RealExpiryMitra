@@ -102,6 +102,46 @@ test("ambiguous OCR prompts Gemini; Gemini values remain suggestions and disagre
   }
 });
 
+test("PaddleOCR bridge forwards image and service token, preserving returned text confidence", async () => {
+  const oldUrl = process.env.PADDLE_OCR_URL;
+  const oldToken = process.env.PADDLE_OCR_TOKEN;
+  const oldFetch = global.fetch;
+  process.env.PADDLE_OCR_URL = "http://ocr.internal/ocr";
+  process.env.PADDLE_OCR_TOKEN = "unit-test-token";
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return { ok: true, json: async () => ({ lines: [{ text: "EXP 08/2027", confidence: 0.97 }] }) };
+  };
+  try {
+    const result = await ocrService.callPaddleOcrService("data:image/jpeg;base64,aGVsbG8=");
+    assert.equal(request.url, "http://ocr.internal/ocr");
+    assert.equal(request.options.headers.Authorization, "Bearer unit-test-token");
+    assert.ok(request.options.body instanceof FormData);
+    assert.equal(result.rawText, "EXP 08/2027");
+    assert.equal(result.lines[0].confidence, 0.97);
+    assert.equal(result.confidence, 0.97);
+    assert.equal(result.source, "paddleocr");
+  } finally {
+    global.fetch = oldFetch;
+    if (oldUrl === undefined) delete process.env.PADDLE_OCR_URL; else process.env.PADDLE_OCR_URL = oldUrl;
+    if (oldToken === undefined) delete process.env.PADDLE_OCR_TOKEN; else process.env.PADDLE_OCR_TOKEN = oldToken;
+  }
+});
+
+test("PaddleOCR errors are sanitized and report timeouts clearly", async () => {
+  const oldUrl = process.env.PADDLE_OCR_URL;
+  const oldFetch = global.fetch;
+  process.env.PADDLE_OCR_URL = "http://ocr.internal/ocr";
+  global.fetch = async () => { throw new Error("internal address and secret"); };
+  try {
+    await assert.rejects(ocrService.callPaddleOcrService("data:image/jpeg;base64,aGVsbG8="), /PaddleOCR service is unavailable/);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldUrl === undefined) delete process.env.PADDLE_OCR_URL; else process.env.PADDLE_OCR_URL = oldUrl;
+  }
+});
+
 test("OCR and Gemini failure returns the clear manual-entry fallback", async () => {
   const oldGeminiKey = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = "test-only";
