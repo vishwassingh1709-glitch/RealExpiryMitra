@@ -3,7 +3,7 @@
  * Supports:
  * 1. Tesseract.js (Open-source, runs locally without paid API keys)
  * 2. OCR.space API (Cloud OCR service when OCR_API_KEY is configured)
- * 3. Mock mode (When OCR_MODE=mock or in test harness with dummy test payload)
+ * 3. Test-only mock mode
  */
 
 const { isValidImagePayload } = require("../middleware/validate.middleware");
@@ -220,12 +220,12 @@ async function extractText(image) {
   const ocrMode = (process.env.OCR_MODE || "").toLowerCase();
   const ocrProvider = (process.env.OCR_PROVIDER || "").toLowerCase();
 
-  // Test mode flag or dummy test image string: preserve deterministic mock behavior for test suite
-  if (
+  // Keep deterministic sample OCR results out of deployed application flows.
+  if (process.env.NODE_ENV === "test" && (
     ocrMode === "mock" ||
     ocrProvider === "mock" ||
     image === "data:image/jpeg;base64,test"
-  ) {
+  )) {
     const mockRaw = "MFG 12/06/2024 EXP 11/06/2026 BATCH A24B7";
     return {
       rawText: mockRaw,

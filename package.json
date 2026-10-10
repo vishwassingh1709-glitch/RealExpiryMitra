@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test --test-concurrency=1 test/backend.test.js test/features.test.js test/api.test.js"
+    "test": "node --test --test-concurrency=1 test/backend.test.js test/features.test.js test/api.test.js test/barcode.test.js test/product-identification.test.js test/firestore-product.test.js test/date-extraction.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

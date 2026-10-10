@@ -1,4 +1,5 @@
 const test = require("node:test");
+require("./helpers/preserve-data");
 const assert = require("node:assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
@@ -13,6 +14,19 @@ const scanHistoryService = require("../src/services/scan-history.service");
 const categoryRepo = require("../src/repositories/category.repository");
 const { processScan } = require("../src/services/scan.service");
 const { getFirestoreStatus } = require("../src/repositories/firestore");
+const catalogTestProduct = require("./fixtures/catalog-product.json");
+const originalNodeEnv = process.env.NODE_ENV;
+process.env.NODE_ENV = "test";
+
+test.before(async () => {
+  await productService.saveProduct(catalogTestProduct);
+});
+
+test.after(async () => {
+  await productService.deleteProduct(catalogTestProduct.barcode);
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+});
 
 const inventoryFile = path.join(__dirname, "../data/inventory.json");
 
@@ -197,18 +211,30 @@ test("product service finds local known product", async () => {
   assert.equal(res.product.name, "Maggi 2-Minute Noodles");
 });
 
+test("product service resolves the valid GTIN inside a GS1 date-bearing barcode", async () => {
+  await productService.saveProduct({ barcode: "3017620422003", name: "GS1 lookup fixture", source: "manual" });
+  try {
+    const result = await productService.findProduct("]C1010301762042200317270630");
+    assert.equal(result.status, "found");
+    assert.equal(result.product.name, "GS1 lookup fixture");
+  } finally {
+    await productService.deleteProduct("3017620422003");
+  }
+});
+
 /* ---------------- SCAN ORCHESTRATION & HISTORY ---------------- */
 
-test("scan flow returns candidate details without saving until confirmed", async () => {
+test("scan flow leaves ambiguous OCR readings unconfirmed and never auto-saves", async () => {
   const result = await processScan({
     barcode: "8901030700087",
     image: "data:image/jpeg;base64,test"
   });
 
   assert.equal(result.httpStatus, 200);
-  assert.equal(result.body.status, "confident");
+  assert.equal(result.body.status, "manual_entry");
   assert.equal(result.body.product.name, "Maggi 2-Minute Noodles");
-  assert.ok(result.body.expiry.parsed_expiry_date);
+  assert.equal(result.body.expiry.parsed_expiry_date, null);
+  assert.ok(result.body.expiry.candidates.some((candidate) => candidate.date_type === "expiry_date" && candidate.uncertain));
   assert.equal(result.body.needs_confirmation, true);
   assert.ok(result.body.record_id);
 });
@@ -225,3 +251,4 @@ test("database status check accurately reports configured state", () => {
   assert.equal(typeof status.configured, "boolean");
   assert.equal(typeof status.connected, "boolean");
 });
+require("./helpers/preserve-data");

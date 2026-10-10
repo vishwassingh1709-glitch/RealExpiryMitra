@@ -1,18 +1,27 @@
 const test = require("node:test");
+require("./helpers/preserve-data");
 const assert = require("node:assert/strict");
 const http = require("http");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { getApps, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const app = require("../src/app");
+const productService = require("../src/services/product.service");
+const catalogTestProduct = require("./fixtures/catalog-product.json");
 
 let server;
 let baseUrl;
 let rawFetch;
+let originalSalesData;
+const salesFile = path.join(__dirname, "../data/sales.json");
 
 test.before(async () => {
   // The API suite exercises the protected routes with a test-only identity.
   // Production middleware still requires a real, verified Firebase token.
   if (!getApps().length) initializeApp({ projectId: "expirymitra-test" });
+  originalSalesData = await fs.readFile(salesFile, "utf8");
+  await productService.saveProduct(catalogTestProduct);
   getAuth().verifyIdToken = async (token) => {
     if (token === "expirymitra-test-owner-token") {
       return { uid: "store_default", store_id: "store_default", role: "shopkeeper" };
@@ -24,7 +33,13 @@ test.before(async () => {
   };
   rawFetch = global.fetch;
   global.fetch = (input, options = {}) => {
-    const url = new URL(typeof input === "string" ? input : input.url, baseUrl || "http://127.0.0.1");
+    const url = new URL(typeof input === "string" ? input : (input instanceof URL ? input.href : input.url), baseUrl || "http://127.0.0.1");
+    if (url.hostname === "world.openfoodfacts.org") {
+      return Promise.resolve(new Response(JSON.stringify({ status: 0, product: null }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    }
     if (url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
       const headers = new Headers(options.headers || (typeof input !== "string" ? input.headers : undefined));
       headers.set("Authorization", "Bearer expirymitra-test-owner-token");
@@ -41,6 +56,11 @@ test.before(async () => {
       resolve();
     });
   });
+});
+
+test.after(async () => {
+  await productService.deleteProduct(catalogTestProduct.barcode);
+  if (originalSalesData !== undefined) await fs.writeFile(salesFile, originalSalesData, "utf8");
 });
 
 test.after(async () => {
@@ -67,12 +87,15 @@ test("serves frontend index.html, styles.css, app.js, and vendor/zxing-browser.m
   assert.match(html, /screen-dashboard/);
   assert.match(html, /screen-record-sale/);
   assert.match(html, /zxing-browser\.min\.js/);
+  assert.doesNotMatch(html, /id="tab-manual-entry"/);
 
   assert.equal(cssRes.status, 200);
   assert.match(cssRes.headers.get("content-type"), /css/);
 
   assert.equal(jsRes.status, 200);
   assert.match(jsRes.headers.get("content-type"), /javascript/);
+  const js = await jsRes.text();
+  assert.match(js, /showManualEntryForBarcode\(barcode, message\)/);
 
   assert.equal(zxingRes.status, 200);
   assert.match(zxingRes.headers.get("content-type"), /javascript/);
@@ -167,7 +190,7 @@ test("product barcode lookup finds product and returns 404 for missing", async (
   assert.equal(foundData.product.barcode, "8901030700087");
   assert.ok(foundData.product.quantity !== undefined);
 
-  const missingRes = await fetch(`${baseUrl}/api/products/barcode/0000000000000`);
+  const missingRes = await fetch(`${baseUrl}/api/products/barcode/3017620422003`);
   assert.equal(missingRes.status, 404);
   const missingData = await missingRes.json();
   assert.equal(missingData.success, false);
@@ -191,6 +214,24 @@ test("product barcode lookup finds product and returns 404 for missing", async (
     body: JSON.stringify({ barcode: "" })
   });
   assert.equal(invalidRes.status, 400);
+});
+
+test("parallel identify API returns verified catalog result or an explicit missing result", async () => {
+  const foundRes = await fetch(`${baseUrl}/api/products/identify`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ barcode: "8901030700087" })
+  });
+  assert.equal(foundRes.status, 200);
+  const found = await foundRes.json();
+  assert.equal(found.status, "found");
+  assert.equal(found.product.source, "catalog");
+
+  const missingRes = await fetch(`${baseUrl}/api/products/identify`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ barcode: "3017620422003" })
+  });
+  assert.equal(missingRes.status, 404);
+  assert.equal((await missingRes.json()).status, "not_found");
 });
 
 /* ---------------- SALES TRANSACTIONS API ---------------- */
@@ -261,3 +302,29 @@ test("store profile GET and PUT endpoints work properly", async () => {
     body: JSON.stringify({ phone: "9876543210" })
   });
 });
+
+test("protected date-label API includes structured GS1 dates for shopkeeper review", async () => {
+  const priorNodeEnv = process.env.NODE_ENV;
+  const priorOcrMode = process.env.OCR_MODE;
+  const priorGeminiKey = process.env.GEMINI_API_KEY;
+  process.env.NODE_ENV = "test";
+  process.env.OCR_MODE = "mock";
+  delete process.env.GEMINI_API_KEY;
+  try {
+    const response = await fetch(`${baseUrl}/api/scan/dates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ barcode: "]C1010301762042200317270630", image: "data:image/jpeg;base64,test" })
+    });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    const gs1Expiry = data.candidates.find((candidate) => candidate.date_type === "expiry_date" && candidate.source === "gs1_barcode");
+    assert.equal(gs1Expiry.normalized_date, "2027-06-30");
+    assert.equal(data.requires_confirmation, true);
+  } finally {
+    if (priorNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = priorNodeEnv;
+    if (priorOcrMode === undefined) delete process.env.OCR_MODE; else process.env.OCR_MODE = priorOcrMode;
+    if (priorGeminiKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = priorGeminiKey;
+  }
+});
+require("./helpers/preserve-data");

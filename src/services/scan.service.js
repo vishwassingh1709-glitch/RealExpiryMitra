@@ -1,164 +1,91 @@
-/**
- * Scan orchestration service coordinating lookup, OCR, AI interpretation, validation, and scan audit logging.
- */
+/** Barcode plus printed-date scan orchestration. All extracted values are review-only. */
 
 const { findProduct } = require("./product.service");
-const { extractText } = require("./ocr.service");
-const { interpretExpiry } = require("./ai.service");
-const { validate } = require("./validation.service");
+const dateExtraction = require("./date-extraction.service");
 const inventory = require("./inventory.service");
 const scanHistoryService = require("./scan-history.service");
 
-async function processScan({ barcode, image, autoSave = false, storeId = "store_default" }) {
+function confirmedCandidate(candidates, type) {
+  const safe = candidates.filter((item) => item.date_type === type && item.normalized_date && !item.uncertain && !item.conflict && item.precision === "day" && item.source !== "gemini_image");
+  const values = [...new Set(safe.map((item) => item.normalized_date))];
+  return values.length === 1 ? safe.find((item) => item.normalized_date === values[0]) : null;
+}
+
+function batchCandidate(candidates) {
+  const matches = candidates.filter((item) => item.date_type === "batch_number" && item.raw_value && !item.uncertain && !item.conflict && item.source !== "gemini_image");
+  const values = [...new Set(matches.map((item) => item.raw_value))];
+  return values.length === 1 ? values[0] : null;
+}
+
+async function processScan({ barcode, image, storeId = "store_default" }) {
   const normalizedBarcode = String(barcode || "").trim();
+  if (!normalizedBarcode) return { httpStatus: 400, body: { status: "error", message: "barcode is required" } };
 
-  if (!normalizedBarcode) {
-    return {
-      httpStatus: 400,
-      body: {
-        status: "error",
-        message: "barcode is required"
-      }
-    };
-  }
-
-  // 1. Product Lookup (Local / Firestore repository -> Open Food Facts)
   const productResult = await findProduct(normalizedBarcode, storeId);
-  const isProductFound = productResult.status === "found" && productResult.product;
+  const productFound = productResult.status === "found" && productResult.product;
+  const product = productFound ? productResult.product : { barcode: normalizedBarcode, name: "", brand: "", category: "Other", source: "unregistered" };
 
-  const product = isProductFound
-    ? productResult.product
-    : {
-        barcode: normalizedBarcode,
-        name: "",
-        brand: "",
-        category: "Other",
-        source: "unregistered"
-      };
-
-  // 2. OCR Execution
-  let ocr;
+  let extracted;
   try {
-    ocr = await extractText(image);
+    extracted = await dateExtraction.extractDates({ barcode: normalizedBarcode, image });
   } catch (error) {
-    console.error("[Scan Service] OCR error:", error.message);
-    await scanHistoryService.record({
-      barcode: normalizedBarcode,
-      store_id: storeId,
-      ocr_status: "failed",
-      raw_text: null,
-      error: error.message
-    });
-    return {
-      httpStatus: 200,
-      body: {
-        status: "ocr_error",
-        barcode: normalizedBarcode,
-        product,
-        product_found: isProductFound,
-        message: error.message || "Unable to read expiry information. Please retry with a clearer photo."
-      }
-    };
+    console.error("[Scan Service] Date extraction error:", error.message);
+    await scanHistoryService.record({ barcode: normalizedBarcode, store_id: storeId, ocr_status: "failed", raw_text: null, error: error.message }).catch(() => {});
+    return { httpStatus: 200, body: { status: "manual_entry", barcode: normalizedBarcode, product, product_found: Boolean(productFound), needs_confirmation: true, message: dateExtraction.FALLBACK_MESSAGE, expiry: { candidates: [], warnings: ["Date extraction unavailable"] } } };
   }
 
-  if (!ocr || !ocr.rawText || !ocr.rawText.trim()) {
-    await scanHistoryService.record({
-      barcode: normalizedBarcode,
-      store_id: storeId,
-      ocr_status: "empty",
-      raw_text: ""
-    });
-    return {
-      httpStatus: 200,
-      body: {
-        status: "ocr_error",
-        barcode: normalizedBarcode,
-        product,
-        product_found: isProductFound,
-        message: "No text detected on the expiry label. Please hold steady and ensure good lighting."
-      }
-    };
-  }
-
-  // 3. AI / Deterministic Interpretation
-  const textToParse = ocr.normalizedText || ocr.rawText;
-  const interpretation = await interpretExpiry(textToParse, product);
-
-  // 4. Validation
-  const validation = validate(interpretation);
-
-  // 5. Expiry Status & Days Remaining Calculation (if expiry date exists)
-  const { days_left, status: expiry_status } = inventory.statusFor(
-    interpretation.expiry_date
-  );
-
-  const candidateId = `cand_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-  // 6. Record to Scan History Audit Trail
+  const candidates = extracted.candidates || [];
+  const mfg = confirmedCandidate(candidates, "manufacturing_date");
+  const packaging = confirmedCandidate(candidates, "packaging_date");
+  const expiry = confirmedCandidate(candidates, "expiry_date");
+  const bestBefore = confirmedCandidate(candidates, "best_before_date");
+  const batch = batchCandidate(candidates);
+  const expiryDate = expiry?.normalized_date || null;
+  const mfgDate = mfg?.normalized_date || null;
+  const { days_left, status: expiry_status } = inventory.statusFor(expiryDate);
   await scanHistoryService.record({
     barcode: normalizedBarcode,
     store_id: storeId,
     product_name: product.name,
-    ocr_status: "success",
-    raw_text: ocr.rawText,
-    candidate_mfg_date: interpretation.mfg_date,
-    candidate_expiry_date: interpretation.expiry_date,
-    batch: interpretation.batch,
-    confidence: interpretation.confidence,
-    source: interpretation.source || ocr.source,
-    warnings: interpretation.warnings || []
-  }).catch((err) => console.warn("[Scan History error]", err.message));
+    ocr_status: extracted.status === "review_required" ? "review_required" : "manual_entry",
+    raw_text: extracted.raw_visible_text || "",
+    candidate_mfg_date: mfgDate,
+    candidate_expiry_date: expiryDate,
+    batch,
+    source: [extracted.sources?.ocr, extracted.sources?.gemini, extracted.sources?.gs1 ? "gs1_barcode" : null].filter(Boolean).join(",") || "none",
+    warnings: extracted.warnings || []
+  }).catch((error) => console.warn("[Scan History error]", error.message));
 
-  // 7. Optional autoSave flag (used in automated batch tests)
-  let savedRecord = null;
-  if (autoSave && validation.accepted && isProductFound) {
-    savedRecord = await inventory.create({
-      barcode: normalizedBarcode,
-      product_name: product.name,
-      brand: product.brand,
-      batch: interpretation.batch,
-      mfg_date: interpretation.mfg_date,
-      expiry_date: interpretation.expiry_date,
-      quantity: 1,
-      confidence: interpretation.confidence,
-      source: "ocr",
-      review_status: "confirmed"
-    }, storeId);
-  }
-
-  const responseStatus = validation.accepted
-    ? "confident"
-    : validation.reason === "invalid"
-    ? "invalid"
-    : "low_confidence";
-
+  // Deliberately ignore legacy auto_save flags: extracted values require a user review and explicit confirmation.
   return {
     httpStatus: 200,
     body: {
-      status: responseStatus,
+      status: extracted.status,
       product,
-      product_found: isProductFound,
+      product_found: Boolean(productFound),
       needs_confirmation: true,
       expiry: {
-        raw_text: ocr.rawText,
-        normalized_text: ocr.normalizedText,
-        parsed_expiry_date: interpretation.expiry_date,
-        parsed_mfg_date: interpretation.mfg_date,
-        expiry_date: interpretation.expiry_date,
-        mfg_date: interpretation.mfg_date,
-        batch: interpretation.batch,
-        confidence: interpretation.confidence,
-        source: interpretation.source,
-        warnings: interpretation.warnings || []
+        raw_text: extracted.raw_visible_text || "",
+        normalized_text: extracted.raw_visible_text || "",
+        parsed_expiry_date: expiryDate,
+        parsed_mfg_date: mfgDate,
+        expiry_date: expiryDate,
+        mfg_date: mfgDate,
+        packaging_date: packaging?.normalized_date || null,
+        best_before_date: bestBefore?.normalized_date || null,
+        batch,
+        candidates,
+        date_metadata: { raw_visible_text: extracted.raw_visible_text || "", candidates, extraction_methods: [extracted.sources?.ocr, extracted.sources?.gemini, extracted.sources?.gs1 ? "gs1_barcode" : null].filter(Boolean) },
+        confidence: null,
+        source: extracted.sources,
+        warnings: extracted.warnings || []
       },
-      days_left: interpretation.expiry_date ? days_left : null,
-      expiry_status: interpretation.expiry_date ? expiry_status : "unknown",
-      record_id: savedRecord ? savedRecord.id : candidateId,
-      message: validation.accepted
-        ? "Expiry information detected successfully. Please review and confirm."
-        : validation.message
+      days_left: expiryDate ? days_left : null,
+      expiry_status: expiryDate ? expiry_status : "unknown",
+      record_id: `cand_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      message: extracted.message
     }
   };
 }
 
-module.exports = { processScan };
+module.exports = { processScan, confirmedCandidate, batchCandidate };

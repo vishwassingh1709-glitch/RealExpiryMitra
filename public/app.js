@@ -23,6 +23,16 @@ const state = {
   alertsFilter: "all",
   salesRange: "today",
   currentProduct: null,
+  currentLookupProduct: null,
+  pendingProductConflict: null,
+  currentLookupPhoto: null,
+  dateLabelImage: null,
+  dateLabelImages: null,
+  dateExtraction: null,
+  dateExtractionRequestId: 0,
+  dateExtractionController: null,
+  identificationRequestId: 0,
+  identificationController: null,
   saleSelectedProduct: null,
   saleQuantity: 5,
   addQuantity: 1,
@@ -97,8 +107,18 @@ function showScreen(screenId, pushHistory = true) {
     }
   });
 
-  // Stop camera stream if navigating away from scan screen
-  if (screenId !== "screen-add-product" && screenId !== "screen-scan-result" && state.cameraStream) {
+  // Stop capture as soon as the scanner screen is left.
+  if (screenId !== "screen-add-product") {
+    state.identificationRequestId += 1;
+    state.identificationController?.abort();
+    state.identificationController = null;
+    state.currentLookupPhoto = null;
+    state.isProcessingScan = false;
+    state.dateExtractionRequestId += 1;
+    state.dateExtractionController?.abort();
+    state.dateExtractionController = null;
+    const loading = document.getElementById("scanner-loading");
+    if (loading) loading.style.display = "none";
     stopCamera();
   }
 
@@ -149,13 +169,7 @@ async function apiFetch(input, options = {}) {
 
 // Helper: Resolve SVG asset based on product name
 function resolveProductIcon(productName = "") {
-  const name = productName.toLowerCase();
-  if (name.includes("milk") || name.includes("taaza")) return "assets/amul-milk.svg";
-  if (name.includes("biscuit") || name.includes("good day")) return "assets/britannia-biscuits.svg";
-  if (name.includes("juice") || name.includes("tropicana")) return "assets/tropicana-juice.svg";
-  if (name.includes("noodle") || name.includes("maggi")) return "assets/maggi-noodles.svg";
-  if (name.includes("curd") || name.includes("dahi")) return "assets/mother-dairy-curd.svg";
-  if (name.includes("coke") || name.includes("coca") || name.includes("cola")) return "assets/coca-cola.svg";
+  // Never imply that a product photo was identified from its name.
   return "assets/product-placeholder.svg";
 }
 
@@ -298,7 +312,10 @@ function createProductCard(item, isAttentionMode = false) {
 
   const batchInfo = item.batch ? `Batch ${item.batch} &bull; ` : "";
   const unitsInfo = item.quantity !== undefined ? `${item.quantity} units` : "";
-  const dateFormatted = item.expiry_date ? (unitsInfo ? ` &bull; ${item.expiry_date}` : item.expiry_date) : "";
+  const dateParts = [];
+  if (item.expiry_date) dateParts.push(`EXP ${item.expiry_date}`);
+  if (item.best_before_date) dateParts.push(`Best before ${item.best_before_date}`);
+  const dateFormatted = dateParts.length ? ` &bull; ${dateParts.join(" &bull; ")}` : "";
 
   div.innerHTML = `
     <div class="product-item-left">
@@ -348,7 +365,7 @@ function openProductDetails(item) {
   }
 
   document.getElementById("tile-batch").textContent = item.batch || "—";
-  document.getElementById("tile-expiry").textContent = item.expiry_date || "—";
+  document.getElementById("tile-expiry").textContent = item.expiry_date || (item.best_before_date ? `Best before ${item.best_before_date}` : "—");
   document.getElementById("tile-quantity").textContent = `${Number(item.quantity) || 0} units`;
   document.getElementById("tile-days-left").textContent = item.days_left !== undefined ? `${item.days_left} days` : "—";
   document.getElementById("tile-category").textContent = item.category || "—";
@@ -444,12 +461,16 @@ async function refreshSales() {
 function openRecordSale(item) {
   if (!item) return;
   state.saleSelectedProduct = item;
-  state.saleQuantity = Math.min(5, Math.max(1, item.quantity || 5));
+  const availableStock = Number(item.quantity);
+  state.saleQuantity = Number.isFinite(availableStock) && availableStock > 0
+    ? Math.min(5, availableStock)
+    : 1;
 
-  document.getElementById("sale-prod-name").textContent = item.product_name || "Unknown product";
+  document.getElementById("sale-prod-name").textContent = item.product_name || "Product name unavailable";
   document.getElementById("sale-prod-batch").textContent = item.batch ? `Batch ${item.batch}` : "No batch recorded";
   document.getElementById("sale-prod-stock").textContent = `${Number(item.quantity) || 0} units`;
   document.getElementById("sale-prod-img").src = resolveProductIcon(item.product_name);
+  document.getElementById("sale-unit-price").value = item.price ?? "";
 
   const badge = document.getElementById("sale-prod-badge");
   if (item.days_left !== undefined && item.days_left <= 2) {
@@ -469,11 +490,19 @@ function updateSaleCalculations() {
   const qty = state.saleQuantity;
   document.getElementById("sale-qty-val").textContent = qty;
 
-  const unitPrice = item?.price || (item?.product_name?.toLowerCase().includes("milk") ? 50 : 40);
-  const total = unitPrice * qty;
+  const priceInput = document.getElementById("sale-unit-price");
+  const rawPrice = priceInput?.value ?? item?.price;
+  const unitPrice = rawPrice !== "" && rawPrice !== null && rawPrice !== undefined ? Number(rawPrice) : NaN;
+  const hasPrice = Number.isFinite(unitPrice) && unitPrice >= 0;
+  const confirmButton = document.getElementById("btn-confirm-sale");
 
-  document.getElementById("sale-unit-calc").innerHTML = `&#8377;${unitPrice} &times; ${qty}`;
-  document.getElementById("sale-total-amount").innerHTML = `&#8377;${total}`;
+  document.getElementById("sale-unit-calc").textContent = hasPrice
+    ? `₹${unitPrice} × ${qty}`
+    : "Enter a unit price";
+  document.getElementById("sale-total-amount").textContent = hasPrice
+    ? `₹${(unitPrice * qty).toLocaleString("en-IN")}`
+    : "—";
+  if (confirmButton) confirmButton.disabled = !hasPrice;
 }
 
 async function confirmSale() {
@@ -481,12 +510,17 @@ async function confirmSale() {
   const qty = state.saleQuantity;
 
   if (!item) return;
-  if (item.quantity && qty > item.quantity) {
-    showToast(`Cannot sell ${qty} units. Only ${item.quantity} units left!`, "error");
+  const availableStock = Number(item.quantity);
+  if (!Number.isFinite(availableStock) || availableStock <= 0 || qty > availableStock) {
+    showToast(`Cannot sell ${qty} units. Available stock: ${Number.isFinite(availableStock) ? availableStock : 0}.`, "error");
     return;
   }
 
-  const unitPrice = item?.price || (item?.product_name?.toLowerCase().includes("milk") ? 50 : 40);
+  const unitPrice = Number(document.getElementById("sale-unit-price")?.value);
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    showToast("Enter a valid unit price before recording the sale.", "error");
+    return;
+  }
   const confirmBtn = document.getElementById("btn-confirm-sale");
   confirmBtn.disabled = true;
   confirmBtn.textContent = "Processing Sale...";
@@ -568,7 +602,8 @@ function getZxingReader() {
     BarcodeFormat.CODE_128,
     BarcodeFormat.CODE_39,
     BarcodeFormat.ITF,
-    BarcodeFormat.QR_CODE
+    BarcodeFormat.QR_CODE,
+    BarcodeFormat.DATA_MATRIX
   ].filter((f) => f !== undefined);
 
   // 2 = POSSIBLE_FORMATS, 3 = TRY_HARDER
@@ -588,11 +623,13 @@ function showScannerError(message) {
   const errMsg = document.getElementById("scanner-error-msg");
   const liveBadge = document.getElementById("scanner-live-badge");
   const laser = document.getElementById("scanner-laser");
+  const loading = document.getElementById("scanner-loading");
 
   if (errMsg) errMsg.textContent = message;
   if (errOverlay) errOverlay.style.display = "flex";
   if (liveBadge) liveBadge.style.display = "none";
   if (laser) laser.style.display = "none";
+  if (loading) loading.style.display = "none";
 
   showToast(message, "error");
 }
@@ -608,15 +645,36 @@ async function startCamera(facing = null) {
   hideScannerError();
 
   const video = document.getElementById("camera-video");
-  const sampleImg = document.getElementById("scan-viewfinder-sample-img");
+  const loading = document.getElementById("scanner-loading");
+  const loadingText = document.getElementById("scanner-loading-text");
   const liveBadge = document.getElementById("scanner-live-badge");
   const laser = document.getElementById("scanner-laser");
   const statusText = document.getElementById("scanner-status-text");
   const detectedPill = document.getElementById("scanner-detected-pill");
   const notFoundCard = document.getElementById("card-product-not-found");
+  const foundCard = document.getElementById("card-product-found");
   const startBtn = document.getElementById("btn-start-camera");
   const stopBtn = document.getElementById("btn-stop-camera");
   const flipBtn = document.getElementById("btn-flip-camera");
+
+  if (loading) loading.style.display = "flex";
+  if (loadingText) loadingText.textContent = "Starting camera…";
+  if (foundCard) foundCard.style.display = "none";
+
+  // Stop an earlier stream immediately, including when a camera switch fails.
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach((track) => track.stop());
+    state.cameraStream = null;
+  }
+  if (state.zxingControls) {
+    try { state.zxingControls.stop(); } catch (_) {}
+    state.zxingControls = null;
+  }
+  if (video) {
+    video.srcObject = null;
+    video.style.display = "none";
+  }
+  state.isScanning = false;
 
   // Reset UI states
   if (detectedPill) detectedPill.style.display = "none";
@@ -637,18 +695,6 @@ async function startCamera(facing = null) {
   // Determine facing mode
   const targetFacing = facing || state.currentFacingMode || "environment";
   state.currentFacingMode = targetFacing;
-
-  // Clean up any existing stream before starting a new one
-  if (state.cameraStream) {
-    state.cameraStream.getTracks().forEach((track) => track.stop());
-    state.cameraStream = null;
-  }
-  if (state.zxingControls) {
-    try {
-      state.zxingControls.stop();
-    } catch (_) {}
-    state.zxingControls = null;
-  }
 
   let stream = null;
   try {
@@ -721,7 +767,7 @@ async function startCamera(facing = null) {
     return;
   }
 
-  if (sampleImg) sampleImg.style.display = "none";
+  if (loading) loading.style.display = "none";
   if (laser) laser.style.display = "block";
   if (liveBadge) liveBadge.style.display = "flex";
   if (statusText) statusText.textContent = "Point camera at barcode...";
@@ -766,7 +812,7 @@ async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
         const text = result.getText();
         if (text && typeof text === "string" && text.trim().length > 0) {
           scanControls?.stop();
-          handleDetectedBarcode(text.trim());
+          handleDetectedBarcode(text.trim(), capturePackagePhoto(video));
         }
       }
     });
@@ -783,7 +829,325 @@ async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
   }
 }
 
-async function handleDetectedBarcode(barcode) {
+function capturePackagePhoto(video) {
+  if (!video?.videoWidth || !video?.videoHeight) return null;
+  try {
+    const scale = Math.min(1, 960 / video.videoWidth);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.72);
+  } catch (_) { return null; }
+}
+
+function compressProductPhoto(imageData, maxDimension = 960, quality = 0.72) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (_) { resolve(null); }
+    };
+    image.onerror = () => resolve(null);
+    image.src = imageData;
+  });
+}
+
+function prepareDateLabelImages(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The selected photo could not be read."));
+    reader.onload = async () => {
+      try {
+        const original = await compressProductPhoto(reader.result, 1400, 0.86);
+        if (!original) throw new Error("The selected photo could not be prepared.");
+        const image = new Image();
+        image.onload = () => {
+          const scale = Math.min(1.25, 1600 / Math.max(image.width, image.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+          const pixels = frame.data;
+          const width = canvas.width;
+          const height = canvas.height;
+          const gray = new Uint8Array(width * height);
+          const integral = new Uint32Array((width + 1) * (height + 1));
+          let globalSum = 0;
+          for (let y = 0; y < height; y += 1) {
+            let rowSum = 0;
+            for (let x = 0; x < width; x += 1) {
+              const p = (y * width + x) * 4;
+              const value = Math.round(0.299 * pixels[p] + 0.587 * pixels[p + 1] + 0.114 * pixels[p + 2]);
+              gray[y * width + x] = value;
+              rowSum += value;
+              globalSum += value;
+              integral[(y + 1) * (width + 1) + x + 1] = integral[y * (width + 1) + x + 1] + rowSum;
+            }
+          }
+          const mean = globalSum / gray.length;
+          const radius = Math.max(8, Math.round(Math.min(width, height) / 40));
+          for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x < width; x += 1) {
+              const x0 = Math.max(0, x - radius), x1 = Math.min(width, x + radius + 1);
+              const y0 = Math.max(0, y - radius), y1 = Math.min(height, y + radius + 1);
+              const stride = width + 1;
+              const sum = integral[y1 * stride + x1] - integral[y0 * stride + x1] - integral[y1 * stride + x0] + integral[y0 * stride + x0];
+              const localMean = sum / ((x1 - x0) * (y1 - y0));
+              const enhanced = Math.max(0, Math.min(255, (gray[y * width + x] - mean) * 1.35 + mean));
+              const p = (y * width + x) * 4;
+              const output = enhanced < localMean - 8 ? 0 : 255;
+              pixels[p] = pixels[p + 1] = pixels[p + 2] = output;
+              pixels[p + 3] = 255;
+            }
+          }
+          context.putImageData(frame, 0, 0);
+          resolve({ original, enhanced: canvas.toDataURL("image/jpeg", 0.86) });
+        };
+        image.onerror = () => reject(new Error("The selected photo could not be decoded."));
+        image.src = original;
+      } catch (error) { reject(error); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function dateTypeLabel(type) {
+  return ({ manufacturing_date: "Manufacturing date", packaging_date: "Packaging date", expiry_date: "Expiry / use-by", best_before_date: "Best before", batch_number: "Batch / lot", best_before_duration: "Best-before wording" })[type] || type;
+}
+
+function renderDateCandidates(result) {
+  const container = document.getElementById("date-candidate-list");
+  if (!container) return;
+  container.replaceChildren();
+  for (const candidate of result.candidates || []) {
+    const card = document.createElement("div");
+    card.className = "date-candidate-item";
+    const title = document.createElement("strong");
+    title.textContent = dateTypeLabel(candidate.date_type);
+    const details = document.createElement("p");
+    details.textContent = `${candidate.raw_value || "No legible value"}${candidate.normalized_date ? ` · ${candidate.normalized_date} (${candidate.precision} precision)` : " · needs manual correction"} · ${candidate.derived ? "calculated from printed duration · " : ""}${candidate.source}`;
+    card.append(title, details);
+    if (candidate.uncertain || candidate.conflict) {
+      const warning = document.createElement("p");
+      warning.className = "date-candidate-warning";
+      warning.textContent = candidate.conflict ? "OCR, Gemini, or encoded dates disagree. Choose and confirm manually." : (candidate.reason || "Please verify this reading.");
+      card.append(warning);
+    }
+    if (candidate.date_type === "batch_number" && candidate.raw_value) {
+      const use = document.createElement("button");
+      use.type = "button"; use.className = "btn-secondary"; use.textContent = "Use batch number";
+      use.addEventListener("click", () => { document.getElementById("add-product-batch").value = candidate.raw_value; });
+      card.append(use);
+    } else if (candidate.normalized_date && (candidate.precision === "day" || candidate.date_convention === "gs1_day_00_end_of_month")) {
+      const targetId = ({ manufacturing_date: "add-product-mfg", packaging_date: "add-product-packaging", expiry_date: "add-product-expiry", best_before_date: "add-product-best-before" })[candidate.date_type];
+      if (targetId) {
+        const use = document.createElement("button");
+        use.type = "button"; use.className = "btn-secondary"; use.textContent = `Use as ${dateTypeLabel(candidate.date_type)}`;
+        use.addEventListener("click", () => { document.getElementById(targetId).value = candidate.normalized_date; });
+        card.append(use);
+      }
+    }
+    container.append(card);
+  }
+}
+
+function renderScanDateCandidates(expiry) {
+  const container = document.getElementById("res-date-candidate-list");
+  if (!container) return;
+  container.replaceChildren();
+  const candidates = expiry?.candidates || [];
+  if (!candidates.length) {
+    const note = document.createElement("p");
+    note.className = "date-scan-help";
+    note.textContent = "We couldn't read the printed date clearly. Please retake the photo or enter the date manually.";
+    container.append(note);
+    return;
+  }
+  for (const candidate of candidates) {
+    const card = document.createElement("div");
+    card.className = "date-candidate-item";
+    const label = document.createElement("strong"); label.textContent = dateTypeLabel(candidate.date_type);
+    const detail = document.createElement("p"); detail.textContent = `${candidate.raw_value || "No legible value"}${candidate.normalized_date ? ` · ${candidate.normalized_date} (${candidate.precision})` : " · enter or correct manually"} · ${candidate.derived ? "calculated from printed duration · " : ""}${candidate.source}`;
+    card.append(label, detail);
+    if (candidate.uncertain || candidate.conflict) {
+      const warning = document.createElement("p"); warning.className = "date-candidate-warning";
+      warning.textContent = candidate.conflict ? "Date sources disagree. Choose and confirm manually." : (candidate.reason || "Verify the visible print before saving.");
+      card.append(warning);
+    }
+    const targetId = ({ manufacturing_date: "res-mfg-date", packaging_date: "res-packaging-date", expiry_date: "res-expiry-date", best_before_date: "res-best-before-date" })[candidate.date_type];
+    if (targetId && candidate.normalized_date && (candidate.precision === "day" || candidate.date_convention === "gs1_day_00_end_of_month")) {
+      const choose = document.createElement("button"); choose.type = "button"; choose.className = "btn-secondary"; choose.textContent = `Use ${dateTypeLabel(candidate.date_type)}`;
+      choose.addEventListener("click", () => { document.getElementById(targetId).value = candidate.normalized_date; });
+      card.append(choose);
+    }
+    container.append(card);
+  }
+}
+
+async function selectDateLabelPhoto(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  const requestId = ++state.dateExtractionRequestId;
+  state.dateExtractionController?.abort();
+  state.dateExtractionController = null;
+  const status = document.getElementById("date-label-status");
+  const review = document.getElementById("date-label-review");
+  const candidates = document.getElementById("date-candidate-list");
+  const readButton = document.getElementById("btn-read-date-label");
+  if (readButton) { readButton.disabled = false; readButton.textContent = "Read dates from photo"; }
+  state.dateLabelImages = null;
+  state.dateLabelImage = null;
+  state.dateExtraction = null;
+  if (review) review.hidden = false;
+  const preview = document.getElementById("date-label-preview");
+  if (preview) preview.removeAttribute("src");
+  if (file.size > 12 * 1024 * 1024) {
+    if (status) status.textContent = "This photo is too large. Choose or retake a close-up under 12 MB.";
+    return;
+  }
+  if (status) status.textContent = "Preparing photo…";
+  if (candidates) candidates.replaceChildren();
+  try {
+    const images = await prepareDateLabelImages(file);
+    if (requestId !== state.dateExtractionRequestId) return;
+    state.dateLabelImages = images;
+    state.dateLabelImage = state.dateLabelImages.original;
+    const preview = document.getElementById("date-label-preview");
+    if (preview) preview.src = state.dateLabelImage;
+    if (review) review.hidden = false;
+    if (status) status.textContent = "Check that the printed date and batch text are readable, then choose Read dates.";
+    state.dateExtraction = null;
+  } catch (error) {
+    if (requestId !== state.dateExtractionRequestId) return;
+    if (status) status.textContent = error.message || "Photo could not be prepared. Please try another image.";
+  }
+}
+
+async function readDateLabelPhoto() {
+  if (!state.dateLabelImages?.original) return;
+  const requestId = ++state.dateExtractionRequestId;
+  state.dateExtractionController?.abort();
+  const controller = new AbortController();
+  state.dateExtractionController = controller;
+  const button = document.getElementById("btn-read-date-label");
+  const status = document.getElementById("date-label-status");
+  if (button) { button.disabled = true; button.textContent = "Reading label…"; }
+  if (status) status.textContent = "Reading printed text. Please wait…";
+  try {
+    const response = await apiFetch("/api/scan/dates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        barcode: state.lastScannedBarcode || document.getElementById("add-product-barcode")?.value?.trim() || "",
+        image: state.dateLabelImages.original,
+        image_variants: [state.dateLabelImages.enhanced]
+      })
+    });
+    const result = await response.json();
+    if (requestId !== state.dateExtractionRequestId) return;
+    if (!response.ok) throw new Error(result.message || "Date extraction failed.");
+    state.dateExtraction = result;
+    renderDateCandidates(result);
+    if (status) status.textContent = result.message || "Review the candidates and enter or correct the date fields before saving.";
+    if (!result.candidates?.length) showToast(result.message, "info");
+    else showToast("Date candidates are ready for your review.", "info");
+  } catch (error) {
+    if (requestId !== state.dateExtractionRequestId || error.name === "AbortError") return;
+    if (status) status.textContent = "We couldn't read the printed date clearly. Please retake the photo or enter the date manually.";
+    showToast(error.message || "Date reading failed. Enter dates manually.", "error");
+  } finally {
+    if (requestId === state.dateExtractionRequestId && button) { button.disabled = false; button.textContent = "Read dates from photo"; }
+    if (state.dateExtractionController === controller) state.dateExtractionController = null;
+  }
+}
+
+function showManualEntryForBarcode(barcode, message) {
+  stopCamera();
+  state.currentLookupProduct = null;
+  state.pendingProductConflict = null;
+  state.currentLookupPhoto = null;
+  const scannerView = document.getElementById("view-tab-scan");
+  const manualView = document.getElementById("view-tab-manual");
+  const foundCard = document.getElementById("card-product-found");
+  const notFoundCard = document.getElementById("card-product-not-found");
+  if (scannerView) scannerView.style.display = "none";
+  if (manualView) manualView.style.display = "block";
+  if (foundCard) foundCard.style.display = "none";
+  if (notFoundCard) notFoundCard.style.display = "none";
+  const info = document.getElementById("manual-lookup-message");
+  if (info) {
+    info.textContent = message;
+    info.hidden = false;
+  }
+  document.getElementById("manual-barcode").value = barcode;
+  document.getElementById("manual-name").value = "";
+  document.getElementById("manual-brand").value = "";
+  document.getElementById("manual-category").value = "Other";
+  document.getElementById("manual-batch").value = "";
+  document.getElementById("manual-mfg").value = "";
+  document.getElementById("manual-expiry").value = "";
+  document.getElementById("manual-quantity").value = "1";
+  document.getElementById("manual-name").focus();
+}
+
+function showScannerEntryView() {
+  state.dateExtractionRequestId += 1;
+  state.dateExtractionController?.abort();
+  state.dateExtractionController = null;
+  state.identificationRequestId += 1;
+  state.identificationController?.abort();
+  state.identificationController = null;
+  state.currentLookupProduct = null;
+  state.pendingProductConflict = null;
+  state.currentLookupPhoto = null;
+  state.isProcessingScan = false;
+  state.lastScannedBarcode = null;
+  state.lastScanTimestamp = 0;
+  const scannerView = document.getElementById("view-tab-scan");
+  const manualView = document.getElementById("view-tab-manual");
+  if (scannerView) scannerView.style.display = "block";
+  if (manualView) manualView.style.display = "none";
+  const message = document.getElementById("manual-lookup-message");
+  if (message) message.hidden = true;
+  const foundCard = document.getElementById("card-product-found");
+  const notFoundCard = document.getElementById("card-product-not-found");
+  const conflict = document.getElementById("found-product-conflict");
+  const loading = document.getElementById("scanner-loading");
+  const detectedPill = document.getElementById("scanner-detected-pill");
+  if (foundCard) foundCard.style.display = "none";
+  if (notFoundCard) notFoundCard.style.display = "none";
+  if (conflict) conflict.hidden = true;
+  document.getElementById("btn-use-catalog-match").hidden = true;
+  document.getElementById("btn-use-photo-match").hidden = true;
+  if (loading) loading.style.display = "none";
+  if (detectedPill) detectedPill.style.display = "none";
+  document.getElementById("add-product-barcode").value = "";
+  document.getElementById("add-product-batch").value = "";
+  document.getElementById("add-product-mfg").value = "";
+  document.getElementById("add-product-packaging").value = "";
+  document.getElementById("add-product-expiry").value = "";
+  document.getElementById("add-product-best-before").value = "";
+  state.dateLabelImage = null;
+  state.dateLabelImages = null;
+  state.dateExtraction = null;
+  document.getElementById("date-label-review").hidden = true;
+  document.getElementById("found-prod-name").textContent = "";
+  document.getElementById("found-prod-variant").textContent = "";
+  document.getElementById("found-prod-source").textContent = "";
+  const productImage = document.getElementById("found-prod-img");
+  if (productImage) { productImage.removeAttribute("src"); productImage.hidden = true; }
+}
+
+async function handleDetectedBarcode(barcode, packagePhoto = null) {
   // Prevent duplicate scan events from firing repeatedly
   const now = Date.now();
   if (state.isProcessingScan) return;
@@ -794,6 +1158,12 @@ async function handleDetectedBarcode(barcode) {
   state.isProcessingScan = true;
   state.lastScannedBarcode = barcode;
   state.lastScanTimestamp = now;
+  state.currentLookupPhoto = packagePhoto;
+  state.pendingProductConflict = null;
+  const requestId = ++state.identificationRequestId;
+  state.identificationController?.abort();
+  const requestController = new AbortController();
+  state.identificationController = requestController;
 
   console.log(`[SCANNER] Barcode detected: ${barcode}`);
 
@@ -811,6 +1181,10 @@ async function handleDetectedBarcode(barcode) {
   if (detectedPill) detectedPill.style.display = "flex";
   if (statusText) statusText.textContent = "Searching product...";
   if (laser) laser.style.display = "none";
+  const loading = document.getElementById("scanner-loading");
+  const loadingText = document.getElementById("scanner-loading-text");
+  if (loadingText) loadingText.textContent = "Checking product sources…";
+  if (loading) loading.style.display = "flex";
 
   // Pause scanning while processing lookup
   if (state.zxingControls) {
@@ -821,72 +1195,132 @@ async function handleDetectedBarcode(barcode) {
   }
 
   // Lookup in backend API
-  await lookupBarcodeInBackend(barcode);
+  await lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestController);
 }
 
-async function lookupBarcodeInBackend(barcode) {
+function renderIdentifiedProduct(product) {
+  state.dateExtractionRequestId += 1;
+  state.dateExtractionController?.abort();
+  state.dateExtractionController = null;
+  state.currentLookupProduct = product;
+  const foundCard = document.getElementById("card-product-found");
+  const notFoundCard = document.getElementById("card-product-not-found");
+  const scannerView = document.getElementById("view-tab-scan");
+  const manualView = document.getElementById("view-tab-manual");
+  if (scannerView) scannerView.style.display = "block";
+  if (manualView) manualView.style.display = "none";
+  if (notFoundCard) notFoundCard.style.display = "none";
+  if (foundCard) foundCard.style.display = "block";
+  const conflictPanel = document.getElementById("found-product-conflict");
+  if (conflictPanel) conflictPanel.hidden = true;
+  document.getElementById("btn-use-catalog-match").hidden = true;
+  document.getElementById("btn-use-photo-match").hidden = true;
+  document.getElementById("found-prod-name").textContent = product.name || "";
+  document.getElementById("found-prod-variant").textContent = [product.brand, product.category].filter(Boolean).join(" • ");
+  document.getElementById("add-product-barcode").value = product.barcode || state.lastScannedBarcode || "";
+  document.getElementById("add-product-batch").value = "";
+  document.getElementById("add-product-mfg").value = "";
+  document.getElementById("add-product-packaging").value = "";
+  document.getElementById("add-product-expiry").value = "";
+  document.getElementById("add-product-best-before").value = "";
+  state.dateLabelImage = null;
+  state.dateLabelImages = null;
+  state.dateExtraction = null;
+  const dateReview = document.getElementById("date-label-review");
+  if (dateReview) dateReview.hidden = true;
+  document.getElementById("add-qty-val").textContent = "1";
+  state.addQuantity = 1;
+  const sourceText = document.getElementById("found-prod-source");
+  if (sourceText) {
+    const unverified = product.verification_status === "unverified";
+    sourceText.textContent = `${product.source_label || "Product source"}${unverified ? " · suggestion; verify before saving" : " · verified"}`;
+    if (product.packaging_evidence) sourceText.textContent += ` · ${product.packaging_evidence}`;
+  }
+  const productImage = document.getElementById("found-prod-img");
+  let imageUrl = null;
+  try {
+    const candidate = new URL(String(product.image_url || (product.source === "gemini_candidate" ? state.currentLookupPhoto : "")), window.location.href);
+    if (candidate.protocol === "https:" || candidate.protocol === "data:") imageUrl = candidate.href;
+  } catch (_) {}
+  if (productImage) {
+    productImage.hidden = !imageUrl;
+    productImage.removeAttribute("src");
+    if (imageUrl) {
+      productImage.src = imageUrl;
+      productImage.onerror = () => { productImage.hidden = true; };
+    }
+  }
+}
+
+async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestController) {
   console.log(`[SCANNER] Sending barcode to backend: ${barcode}`);
 
   const notFoundCard = document.getElementById("card-product-not-found");
-  const notFoundDisplay = document.getElementById("not-found-barcode-display");
   const foundCard = document.getElementById("card-product-found");
   const statusText = document.getElementById("scanner-status-text");
-
+  const loading = document.getElementById("scanner-loading");
   try {
-    const res = await apiFetch(`/api/products/barcode/${encodeURIComponent(barcode)}`);
+    const res = await apiFetch("/api/products/identify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ barcode, ...(packagePhoto ? { image: packagePhoto } : {}) }),
+      signal: requestController.signal
+    });
     const data = await res.json();
+    if (requestId !== state.identificationRequestId) return;
 
-    if (res.ok && data.product) {
+    if (res.ok && data.status === "found" && data.product) {
       console.log(`[SCANNER] Product found: ${data.product.name}`);
-      console.log("[SCANNER] Scan completed");
-
-      if (statusText) statusText.textContent = "✓ Product Found";
-      if (notFoundCard) notFoundCard.style.display = "none";
-
-      // Show Found Product Card
-      if (foundCard) foundCard.style.display = "block";
-
-      const prod = data.product;
-      const prodName = prod.name || prod.product_name || "Found Product";
-      const prodVariant = prod.brand ? `${prod.brand} • ${prod.category || "General"}` : (prod.category || "General");
-      const prodImg = prod.image_url || resolveProductIcon(prodName);
-
-      document.getElementById("found-prod-name").textContent = prodName;
-      document.getElementById("found-prod-variant").textContent = prodVariant;
-      document.getElementById("found-prod-img").src = prodImg;
-
-      // Prefill only the product identity. Existing inventory metadata belongs
-      // to the prior batch and must not be copied into a newly scanned lot.
-      document.getElementById("add-product-barcode").value = barcode;
-      document.getElementById("add-product-batch").value = "";
-      document.getElementById("add-product-expiry").value = "";
-      document.getElementById("add-qty-val").textContent = "1";
-      state.addQuantity = 1;
-
-      showToast(`✓ Barcode detected: ${barcode} (${prodName})`, "success");
-    } else {
-      // Product not found in database
-      console.log(`[SCANNER] Product not found in database for barcode: ${barcode}`);
-      if (statusText) statusText.textContent = "Product Not Found";
-
-      // Show Not Found Card
-      if (notFoundCard) {
-        if (notFoundDisplay) notFoundDisplay.textContent = barcode;
-        notFoundCard.style.display = "block";
+      if (statusText) statusText.textContent = "✓ Product identified";
+      renderIdentifiedProduct(data.product);
+      showToast(`Product suggestion: ${data.product.name}`, "success");
+    } else if (res.ok && data.status === "conflict" && data.product && data.candidate) {
+      state.currentLookupProduct = null;
+      state.pendingProductConflict = data;
+      renderIdentifiedProduct(data.product);
+      state.currentLookupProduct = null;
+      const conflict = document.getElementById("found-product-conflict");
+      if (conflict) conflict.hidden = false;
+      const conflictText = document.getElementById("found-product-conflict-text");
+      const primarySource = data.product.source_label || "product lookup";
+      if (conflictText) conflictText.textContent = `The package photo suggests “${data.candidate.name}”${data.candidate.brand ? ` by ${data.candidate.brand}` : ""}, while ${primarySource} returned “${data.product.name}”${data.product.brand ? ` by ${data.product.brand}` : ""}. Choose the details that match the package before continuing.`;
+      const conflictPhoto = document.getElementById("found-conflict-photo");
+      if (conflictPhoto && packagePhoto) {
+        conflictPhoto.src = packagePhoto;
+        conflictPhoto.hidden = false;
       }
-
-      // Pre-fill manual entry form so user can quickly add the unknown barcode
-      const manualBarcode = document.getElementById("manual-barcode");
-      if (manualBarcode) manualBarcode.value = barcode;
-
-      showToast(`Barcode ${barcode} not found in database`, "info");
+      const primaryChoice = document.getElementById("btn-use-catalog-match");
+      if (primaryChoice) {
+        primaryChoice.hidden = false;
+        primaryChoice.textContent = data.product.source === "catalog" || data.product.source === "inventory"
+          ? "Use confirmed catalogue details"
+          : `Use ${primarySource} details`;
+      }
+      document.getElementById("btn-use-photo-match").hidden = false;
+      if (statusText) statusText.textContent = "Product details need review";
+    } else {
+      const message = res.status === 503 || data.status === "unavailable"
+        ? "Product services are unavailable. Enter the product details manually."
+        : data.status === "invalid"
+          ? "This barcode failed validation. Correct it below or enter the product details manually."
+          : "No source could identify this product. Enter its details manually.";
+      if (statusText) statusText.textContent = "Manual product details needed";
+      showManualEntryForBarcode(data.normalized_barcode || barcode, message);
+      showToast("Product details were not identified. Manual entry is ready.", "info");
     }
   } catch (err) {
+    if (requestId !== state.identificationRequestId || err.name === "AbortError") return;
     console.error("[SCANNER] Barcode lookup error:", err);
-    showToast(`Lookup failed: ${err.message}`, "error");
-    if (statusText) statusText.textContent = "Lookup Error";
+    state.currentLookupProduct = null;
+    if (statusText) statusText.textContent = "Manual product details needed";
+    showManualEntryForBarcode(barcode, "Product services are unavailable. Enter the product details manually.");
+    showToast("Product lookup is unavailable. Manual entry is ready.", "error");
   } finally {
-    state.isProcessingScan = false;
+    if (requestId === state.identificationRequestId) {
+      if (loading) loading.style.display = "none";
+      state.isProcessingScan = false;
+      if (state.identificationController === requestController) state.identificationController = null;
+    }
   }
 }
 
@@ -912,7 +1346,7 @@ function stopCamera() {
     video.style.display = "none";
   }
 
-  const sampleImg = document.getElementById("scan-viewfinder-sample-img");
+  const loading = document.getElementById("scanner-loading");
   const liveBadge = document.getElementById("scanner-live-badge");
   const laser = document.getElementById("scanner-laser");
   const detectedPill = document.getElementById("scanner-detected-pill");
@@ -920,7 +1354,7 @@ function stopCamera() {
   const stopBtn = document.getElementById("btn-stop-camera");
   const flipBtn = document.getElementById("btn-flip-camera");
 
-  if (sampleImg) sampleImg.style.display = "block";
+  if (loading) loading.style.display = "none";
   if (liveBadge) liveBadge.style.display = "none";
   if (laser) laser.style.display = "none";
   if (detectedPill) detectedPill.style.display = "none";
@@ -997,7 +1431,7 @@ async function handleScanFileUpload(file) {
           if (result && result.getText()) {
             const detectedBarcode = result.getText().trim();
             console.log(`[SCANNER] Detected barcode from uploaded photo: ${detectedBarcode}`);
-            await handleDetectedBarcode(detectedBarcode);
+            await handleDetectedBarcode(detectedBarcode, await compressProductPhoto(base64Data));
             return;
           }
         } catch (_) {
@@ -1027,22 +1461,27 @@ async function handleScanFileUpload(file) {
       if (!res.ok) throw new Error(data.message || "OCR scan failed");
 
       // Display in Screen 9 Scan Result
-      document.getElementById("scanned-image-preview").src = base64Data;
+      const imagePreview = document.getElementById("scanned-image-preview");
+      imagePreview.src = base64Data;
+      imagePreview.style.display = "block";
       document.getElementById("badge-scanned-barcode").textContent = data.product?.barcode || barcode;
-      document.getElementById("res-prod-name").textContent = data.product?.name || "Unknown product";
+      document.getElementById("res-prod-name").value = data.product?.name || "";
       document.getElementById("res-prod-variant").textContent = data.product?.brand || data.product?.category || "";
 
       if (data.expiry) {
         document.getElementById("res-raw-text").textContent = data.expiry.raw_text || "";
         document.getElementById("res-mfg-date").value = data.expiry.mfg_date || "";
+        document.getElementById("res-packaging-date").value = data.expiry.packaging_date || "";
         document.getElementById("res-expiry-date").value = data.expiry.expiry_date || "";
+        document.getElementById("res-best-before-date").value = data.expiry.best_before_date || "";
         document.getElementById("res-batch").value = data.expiry.batch || "";
-        const confidencePct = Math.round((data.expiry.confidence || 0) * 100);
-        document.getElementById("res-confidence-badge").textContent = `${confidencePct}% Confident`;
+        document.getElementById("res-confidence-badge").textContent = "Review before saving";
+        renderScanDateCandidates(data.expiry);
+        state.dateExtraction = data.expiry;
       }
 
       showScreen("screen-scan-result");
-      showToast("Expiry details parsed successfully!", "success");
+      showToast(data.status === "review_required" ? "Date candidates are ready for review." : (data.message || "Enter the printed dates manually."), "info");
     } catch (err) {
       showToast(`Scan failed: ${err.message}`, "error");
     }
@@ -1300,6 +1739,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Center Raised Scan Button
   document.getElementById("btn-main-scan")?.addEventListener("click", () => {
+    showScannerEntryView();
     showScreen("screen-add-product");
   });
 
@@ -1367,27 +1807,6 @@ document.addEventListener("DOMContentLoaded", () => {
     searchDebounce = setTimeout(refreshInventory, 250);
   });
 
-  // Add Product Tabs
-  document.getElementById("tab-scan-barcode")?.addEventListener("click", (e) => {
-    e.target.classList.add("active");
-    e.target.setAttribute("aria-selected", "true");
-    const manBtn = document.getElementById("tab-manual-entry");
-    manBtn?.classList.remove("active");
-    manBtn?.setAttribute("aria-selected", "false");
-    document.getElementById("view-tab-scan").style.display = "block";
-    document.getElementById("view-tab-manual").style.display = "none";
-  });
-
-  document.getElementById("tab-manual-entry")?.addEventListener("click", (e) => {
-    e.target.classList.add("active");
-    e.target.setAttribute("aria-selected", "true");
-    const scanBtn = document.getElementById("tab-scan-barcode");
-    scanBtn?.classList.remove("active");
-    scanBtn?.setAttribute("aria-selected", "false");
-    document.getElementById("view-tab-scan").style.display = "none";
-    document.getElementById("view-tab-manual").style.display = "block";
-  });
-
   // Back Buttons
   document.getElementById("btn-add-back")?.addEventListener("click", goBack);
   document.getElementById("btn-details-back")?.addEventListener("click", goBack);
@@ -1402,21 +1821,53 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-flip-camera")?.addEventListener("click", flipCamera);
   document.getElementById("btn-scanner-retry")?.addEventListener("click", () => startCamera());
 
-  // Product Not Found Card Actions
-  document.getElementById("btn-not-found-manual")?.addEventListener("click", () => {
-    document.getElementById("tab-manual-entry")?.click();
-    document.getElementById("manual-name")?.focus();
+  // Manual entry appears automatically when sources cannot identify a product.
+  document.getElementById("btn-manual-back-to-scan")?.addEventListener("click", () => {
+    showScannerEntryView();
+    state.currentLookupPhoto = null;
   });
   document.getElementById("btn-not-found-rescan")?.addEventListener("click", () => {
     const notFoundCard = document.getElementById("card-product-not-found");
     if (notFoundCard) notFoundCard.style.display = "none";
+    state.lastScannedBarcode = null;
+    state.lastScanTimestamp = 0;
     startCamera();
   });
+  document.getElementById("btn-found-rescan")?.addEventListener("click", () => {
+    const foundCard = document.getElementById("card-product-found");
+    if (foundCard) foundCard.style.display = "none";
+    state.currentLookupProduct = null;
+    state.pendingProductConflict = null;
+    state.currentLookupPhoto = null;
+    state.lastScannedBarcode = null;
+    state.lastScanTimestamp = 0;
+    startCamera();
+  });
+  const chooseConflictProduct = (key) => {
+    const choice = state.pendingProductConflict?.[key];
+    if (!choice) return;
+    renderIdentifiedProduct(choice);
+    const conflict = document.getElementById("found-product-conflict");
+    if (conflict) conflict.hidden = true;
+    state.pendingProductConflict = null;
+    showToast(`Selected ${choice.name}; review it before saving.`, "info");
+  };
+  document.getElementById("btn-use-catalog-match")?.addEventListener("click", () => chooseConflictProduct("product"));
+  document.getElementById("btn-use-photo-match")?.addEventListener("click", () => chooseConflictProduct("candidate"));
 
   document.getElementById("scan-file-input")?.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (file) handleScanFileUpload(file);
   });
+
+  document.getElementById("btn-scan-mfg-exp")?.addEventListener("click", () => document.getElementById("date-label-file-input")?.click());
+  document.getElementById("btn-retake-date-label")?.addEventListener("click", () => document.getElementById("date-label-file-input")?.click());
+  document.getElementById("date-label-file-input")?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (file) selectDateLabelPhoto(file);
+    event.target.value = "";
+  });
+  document.getElementById("btn-read-date-label")?.addEventListener("click", readDateLabelPhoto);
 
   // Edit Found button in Add Product screen
   document.getElementById("btn-edit-found")?.addEventListener("click", () => {
@@ -1444,11 +1895,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const barcode = document.getElementById("add-product-barcode").value.trim();
     const batch = document.getElementById("add-product-batch").value.trim();
     const expiry = document.getElementById("add-product-expiry").value.trim();
+    const bestBefore = document.getElementById("add-product-best-before").value.trim();
+    const mfg = document.getElementById("add-product-mfg").value.trim();
+    const packaging = document.getElementById("add-product-packaging").value.trim();
     const name = document.getElementById("found-prod-name").textContent.trim();
     const qty = state.addQuantity;
 
-    if (!barcode || !expiry) {
-      showToast("Please provide barcode and expiry date", "error");
+    if (!barcode || !name || (!expiry && !bestBefore)) {
+      showToast("Provide the product name, barcode, and a confirmed expiry or best-before date.", "error");
+      return;
+    }
+    if (!state.currentLookupProduct) {
+      showToast("Choose which product details match the package before saving.", "error");
       return;
     }
 
@@ -1461,13 +1919,27 @@ document.addEventListener("DOMContentLoaded", () => {
           product_name: name,
           batch,
           expiry_date: expiry,
+          best_before_date: bestBefore,
+          mfg_date: mfg || null,
+          packaging_date: packaging || null,
+          date_metadata: state.dateExtraction ? {
+            raw_visible_text: state.dateExtraction.raw_visible_text || "",
+            candidates: state.dateExtraction.candidates || [],
+            extraction_methods: [state.dateExtraction.sources?.ocr, state.dateExtraction.sources?.gemini, state.dateExtraction.sources?.gs1 ? "gs1_barcode" : null].filter(Boolean)
+          } : null,
           quantity: qty,
-          source: "ocr"
+          source: "barcode",
+          brand: state.currentLookupProduct?.brand || "",
+          category: state.currentLookupProduct?.category || "Other",
+          image_url: state.currentLookupProduct?.image_url || null,
+          product_source: state.currentLookupProduct?.source || "manual",
+          product_source_label: state.currentLookupProduct?.source_label || "Shopkeeper confirmed"
         })
       });
 
       if (!res.ok) throw new Error("Failed to save inventory");
       showToast(`Added ${name} to inventory!`, "success");
+      state.currentLookupProduct = null;
       showScreen("screen-inventory");
     } catch (err) {
       showToast(`Error: ${err.message}`, "error");
@@ -1617,7 +2089,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-sale-qty-inc")?.addEventListener("click", () => {
-    if (!state.saleSelectedProduct || state.saleQuantity < (state.saleSelectedProduct.quantity || 999)) {
+    const availableStock = Number(state.saleSelectedProduct?.quantity);
+    if (Number.isFinite(availableStock) && state.saleQuantity < availableStock) {
       state.saleQuantity += 1;
       updateSaleCalculations();
     } else {
@@ -1626,6 +2099,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-confirm-sale")?.addEventListener("click", confirmSale);
+  document.getElementById("sale-unit-price")?.addEventListener("input", updateSaleCalculations);
 
   // Alerts Filters
   document.querySelectorAll(".filter-pill[data-alert-filter]").forEach((pill) => {
@@ -1640,11 +2114,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // Scan Result Confirmation
   document.getElementById("btn-confirm-add-scanned")?.addEventListener("click", async () => {
     const barcode = document.getElementById("badge-scanned-barcode").textContent.trim();
-    const name = document.getElementById("res-prod-name").textContent.trim();
+    const name = document.getElementById("res-prod-name").value.trim();
     const expiry = document.getElementById("res-expiry-date").value;
+    const bestBefore = document.getElementById("res-best-before-date").value;
     const mfg = document.getElementById("res-mfg-date").value;
+    const packaging = document.getElementById("res-packaging-date").value;
     const batch = document.getElementById("res-batch").value.trim();
     const qty = Number(document.getElementById("res-quantity").value) || 1;
+
+    if (!name || (!expiry && !bestBefore)) {
+      showToast("Enter the product name and confirm an expiry or best-before date before saving.", "error");
+      return;
+    }
 
     try {
       const res = await apiFetch("/api/inventory/confirm", {
@@ -1654,10 +2135,13 @@ document.addEventListener("DOMContentLoaded", () => {
           barcode,
           product_name: name,
           expiry_date: expiry,
+          best_before_date: bestBefore,
           mfg_date: mfg,
+          packaging_date: packaging,
           batch,
           quantity: qty,
-          source: "ocr"
+          source: "ocr",
+          date_metadata: state.dateExtraction?.date_metadata || null
         })
       });
       if (!res.ok) throw new Error("Failed to confirm product");
@@ -1749,6 +2233,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-branding-enter")?.addEventListener("click", () => {
     showScreen("screen-dashboard");
   });
+
+  window.addEventListener("pagehide", stopCamera);
 
   // Start with Screen 1 Splash
   showScreen("screen-splash", false);

@@ -5,6 +5,7 @@
 
 const repo = require("../repositories/inventory.repository");
 const productRepo = require("../repositories/product.repository");
+const { validDate } = require("./validation.service");
 
 /**
  * Calculates days remaining until expiry and categorical status.
@@ -42,7 +43,7 @@ function statusFor(expiryDate) {
 
 function computed(item) {
   if (!item) return null;
-  const statusInfo = statusFor(item.expiry_date);
+  const statusInfo = statusFor(item.expiry_date || item.best_before_date);
   const minStock = Number(item.min_threshold || item.min_stock) || 10;
   const is_low_stock = Number(item.quantity) <= minStock;
   return { ...item, ...statusInfo, min_threshold: minStock, is_low_stock };
@@ -69,7 +70,10 @@ async function create(data, storeId = "store_default") {
     category: data.category ? String(data.category).trim() : "Other",
     batch: data.batch ? String(data.batch).trim() : null,
     mfg_date: data.mfg_date || null,
-    expiry_date: data.expiry_date,
+    packaging_date: data.packaging_date || null,
+    expiry_date: data.expiry_date || null,
+    best_before_date: data.best_before_date || null,
+    date_metadata: data.date_metadata || null,
     quantity,
     store_id: storeId,
     confidence: typeof data.confidence === "number" ? data.confidence : null,
@@ -78,18 +82,25 @@ async function create(data, storeId = "store_default") {
     created_at: data.created_at || new Date().toISOString()
   };
 
-  // If barcode and product details are present, also ensure product is recorded in product catalog
+  // Persist the reviewed inventory record first. Only after it succeeds may the
+  // shopkeeper-confirmed identity be added to the reusable product catalog.
+  const savedItem = await repo.save(item, storeId);
   if (barcode && productName) {
     await productRepo.save({
       barcode,
       name: productName,
       brand: item.brand,
       category: item.category,
-      source: item.source
+      image_url: data.image_url,
+      source: data.product_source || (item.source === "manual" ? "manual" : "inventory_confirmation"),
+      source_label: data.product_source === "gemini_candidate"
+        ? "Shopkeeper confirmed Gemini suggestion"
+        : (data.product_source_label || "Shopkeeper confirmed"),
+      verification_status: "confirmed"
     }).catch((err) => console.warn("[Product Catalog save error]", err.message));
   }
 
-  return repo.save(item, storeId);
+  return savedItem;
 }
 
 /**
@@ -99,15 +110,26 @@ async function createManual(body = {}, storeId = "store_default") {
   const barcode = String(body.barcode || "").trim();
   const productName = String(body.product_name || "").trim();
   const expiryDate = String(body.expiry_date || "").trim();
+  const bestBeforeDate = String(body.best_before_date || "").trim();
 
-  if (!barcode || !productName || !expiryDate) {
+  if (!barcode || !productName || (!expiryDate && !bestBeforeDate)) {
     return {
       httpStatus: 400,
       body: {
         status: "error",
-        message: "barcode, product_name and expiry_date are required"
+        message: "barcode, product_name and either expiry_date or best_before_date are required"
       }
     };
+  }
+
+  const mfgDate = String(body.mfg_date || "").trim();
+  const packagingDate = String(body.packaging_date || "").trim();
+  if ([expiryDate, bestBeforeDate, mfgDate, packagingDate].some((date) => date && !validDate(date))) {
+    return { httpStatus: 400, body: { status: "error", message: "Dates must be valid full calendar dates." } };
+  }
+  const finalDates = [expiryDate, bestBeforeDate].filter(Boolean);
+  if (finalDates.some((date) => (mfgDate && date < mfgDate) || (packagingDate && date < packagingDate))) {
+    return { httpStatus: 400, body: { status: "error", message: "Expiry or best-before date cannot precede the printed production/packaging date." } };
   }
 
   const quantity = normalizedQuantity(body.quantity || 1);
@@ -127,8 +149,11 @@ async function createManual(body = {}, storeId = "store_default") {
     brand: body.brand,
     category: body.category || "Other",
     batch: body.batch,
-    mfg_date: body.mfg_date || null,
-    expiry_date: expiryDate,
+    mfg_date: mfgDate || null,
+    packaging_date: packagingDate || null,
+    expiry_date: expiryDate || null,
+    best_before_date: bestBeforeDate || null,
+    date_metadata: normalizeDateMetadata(body.date_metadata),
     quantity,
     confidence: null,
     source: "manual",
@@ -145,6 +170,7 @@ async function confirmSave(body = {}, storeId = "store_default") {
   const barcode = String(body.barcode || "").trim();
   const productName = String(body.product_name || "").trim();
   const expiryDate = String(body.expiry_date || "").trim();
+  const bestBeforeDate = String(body.best_before_date || "").trim();
 
   if (body.record_id) {
     const existing = await repo.get(body.record_id, storeId);
@@ -153,14 +179,24 @@ async function confirmSave(body = {}, storeId = "store_default") {
     }
   }
 
-  if (!barcode || !productName || !expiryDate) {
+  if (!barcode || !productName || (!expiryDate && !bestBeforeDate)) {
     return {
       httpStatus: 400,
       body: {
         status: "error",
-        message: "barcode, product_name and expiry_date are required to save"
+        message: "barcode, product_name and either expiry_date or best_before_date are required to save"
       }
     };
+  }
+
+  const mfgDate = String(body.mfg_date || "").trim();
+  const packagingDate = String(body.packaging_date || "").trim();
+  if ([expiryDate, bestBeforeDate, mfgDate, packagingDate].some((date) => date && !validDate(date))) {
+    return { httpStatus: 400, body: { status: "error", message: "Dates must be valid full calendar dates." } };
+  }
+  const dateValues = [expiryDate, bestBeforeDate].filter(Boolean);
+  if (dateValues.some((date) => (mfgDate && date < mfgDate) || (packagingDate && date < packagingDate))) {
+    return { httpStatus: 400, body: { status: "error", message: "Expiry or best-before date cannot precede the printed production/packaging date." } };
   }
 
   const quantity = normalizedQuantity(body.quantity || 1) || 1;
@@ -171,15 +207,47 @@ async function confirmSave(body = {}, storeId = "store_default") {
     brand: body.brand || "",
     category: body.category || "Other",
     batch: body.batch || null,
-    mfg_date: body.mfg_date || null,
-    expiry_date: expiryDate,
+    mfg_date: mfgDate || null,
+    packaging_date: packagingDate || null,
+    expiry_date: expiryDate || null,
+    best_before_date: bestBeforeDate || null,
+    date_metadata: normalizeDateMetadata(body.date_metadata),
     quantity,
     confidence: typeof body.confidence === "number" ? body.confidence : null,
+    image_url: body.image_url || null,
+    product_source: body.product_source || null,
+    product_source_label: body.product_source_label || null,
     source: body.source || "ocr",
     review_status: "confirmed"
   }, storeId);
 
   return { httpStatus: 201, body: computed(item) };
+}
+
+function normalizeDateMetadata(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const allowedTypes = new Set(["manufacturing_date", "packaging_date", "expiry_date", "best_before_date", "batch_number", "best_before_duration"]);
+  const candidates = Array.isArray(value.candidates) ? value.candidates.slice(0, 20).flatMap((item) => {
+    if (!item || !allowedTypes.has(item.date_type)) return [];
+    return [{
+      date_type: item.date_type,
+      raw_value: typeof item.raw_value === "string" ? item.raw_value.slice(0, 120) : null,
+      normalized_date: typeof item.normalized_date === "string" ? item.normalized_date.slice(0, 10) : null,
+      precision: ["day", "month"].includes(item.precision) ? item.precision : null,
+      date_convention: item.date_convention === "gs1_day_00_end_of_month" ? item.date_convention : null,
+      source: ["ocr", "tesseract", "ocr_space", "gemini_image", "gs1_barcode", "derived_from_label", "manual"].includes(item.source) ? item.source : "manual",
+      uncertain: Boolean(item.uncertain),
+      conflict: Boolean(item.conflict),
+      derived: Boolean(item.derived)
+    }];
+  }) : [];
+  return {
+    raw_visible_text: typeof value.raw_visible_text === "string" ? value.raw_visible_text.slice(0, 2000) : "",
+    candidates,
+    extraction_methods: Array.isArray(value.extraction_methods) ? value.extraction_methods.filter((method) => ["tesseract", "ocr_space", "gemini_image", "gs1_barcode", "manual"].includes(method)).slice(0, 4) : [],
+    verification_status: "shopkeeper_confirmed",
+    confirmed_at: new Date().toISOString()
+  };
 }
 
 /**
@@ -265,7 +333,7 @@ async function getSummary(storeId = "store_default") {
   // Attention items: expired or expiring soon, sorted by earliest expiry
   const attentionItems = allItems
     .filter((item) => item.status === "expired" || item.status === "expiring_soon")
-    .sort((a, b) => (a.expiry_date || "").localeCompare(b.expiry_date || ""))
+    .sort((a, b) => (a.expiry_date || a.best_before_date || "").localeCompare(b.expiry_date || b.best_before_date || ""))
     .slice(0, 10);
 
   // Recent items: sorted by created_at descending

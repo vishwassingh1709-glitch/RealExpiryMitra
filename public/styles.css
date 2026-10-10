@@ -1446,6 +1446,36 @@ body {
   left: 0;
 }
 
+.scanner-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: #FFFFFF;
+  background: rgba(14, 23, 38, 0.72);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.scanner-loading-spinner {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: scannerSpin 0.75s linear infinite;
+}
+
+@keyframes scannerSpin {
+  to { transform: rotate(360deg); }
+}
+
 .viewfinder-sample-img {
   max-width: 140px;
   max-height: 140px;
@@ -1599,6 +1629,57 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.found-product-image {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.product-conflict,
+.manual-lookup-message {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #e9b65b;
+  border-radius: 10px;
+  background: #fff8e9;
+  color: #614612;
+  font-size: 13px;
+}
+
+.date-scan-tools { margin: 14px 0; }
+.date-scan-help { margin: 7px 0 0; color: var(--text-muted, #687386); font-size: 0.85rem; line-height: 1.4; }
+.date-label-review { margin-top: 12px; padding: 12px; border: 1px solid #dce5e1; border-radius: 14px; background: #f8fbf9; }
+.date-label-review[hidden] { display: none; }
+.date-label-review > img { display: block; width: 100%; max-height: 260px; object-fit: contain; border-radius: 10px; background: #eef2f0; }
+.date-label-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.date-label-actions button { flex: 1 1 150px; }
+.date-candidate-list { display: grid; gap: 8px; margin-top: 10px; }
+.date-candidate-item { padding: 10px; border: 1px solid #e0e6e3; border-radius: 10px; background: #fff; }
+.date-candidate-item p { margin: 3px 0; font-size: 0.86rem; }
+.date-candidate-item button { margin-top: 6px; }
+.date-candidate-warning { color: #985b00; }
+
+.product-conflict button + button {
+  margin-left: 8px;
+}
+
+.found-conflict-photo {
+  display: block;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 8px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.manual-scan-return {
+  margin-bottom: 10px;
 }
 
 .found-name {

@@ -330,22 +330,15 @@
           </button>
         </header>
 
-        <!-- Segmented Tab Header: Scan Barcode vs Manual Entry -->
-        <div class="tab-header" role="tablist">
-          <button class="tab-btn active" id="tab-scan-barcode" type="button" role="tab" aria-selected="true">
-            Scan Barcode
-          </button>
-          <button class="tab-btn" id="tab-manual-entry" type="button" role="tab" aria-selected="false">
-            Manual Entry
-          </button>
-        </div>
-
         <!-- TAB 1: Scan Barcode View -->
         <div id="view-tab-scan" class="tab-view-content">
           <!-- Viewfinder Camera Frame -->
           <div class="viewfinder-box" id="scanner-viewfinder-box">
             <video id="camera-video" class="viewfinder-video" autoplay playsinline webkit-playsinline muted style="display: none;"></video>
-            <img src="assets/maggi-noodles.svg" id="scan-viewfinder-sample-img" alt="Scanning preview" class="viewfinder-sample-img">
+            <div class="scanner-loading" id="scanner-loading" style="display: none;" role="status" aria-live="polite">
+              <span class="scanner-loading-spinner" aria-hidden="true"></span>
+              <span id="scanner-loading-text">Starting camera…</span>
+            </div>
             
             <div class="viewfinder-overlay" id="scanner-overlay">
               <!-- Live scanner status badge inside viewfinder -->
@@ -357,7 +350,7 @@
               <!-- Barcode detection pill overlay on viewfinder -->
               <div class="scanned-pill-overlay" id="scanner-detected-pill" style="display: none;">
                 <span class="pill-check">&#10003;</span>
-                <span id="scanner-detected-code">8901030700087</span>
+                <span id="scanner-detected-code"></span>
               </div>
 
               <div class="viewfinder-frame" id="scanner-frame">
@@ -367,7 +360,7 @@
                 <span class="corner bottom-right"></span>
                 <div class="scan-laser" id="scanner-laser" style="display: none;"></div>
               </div>
-              <span class="viewfinder-caption" id="scanner-caption">Point camera at barcode</span>
+              <span class="viewfinder-caption" id="scanner-caption">Align barcode inside the frame</span>
             </div>
 
             <!-- Scanner Error / Permission Overlay -->
@@ -428,9 +421,6 @@
               </div>
             </div>
             <div class="not-found-actions">
-              <button class="btn-primary" id="btn-not-found-manual" type="button" style="margin-top: 10px;">
-                Add This Product Manually &rarr;
-              </button>
               <button class="btn-text-green" id="btn-not-found-rescan" type="button" style="margin-top: 8px; justify-content: center; width: 100%;">
                 Scan Again
               </button>
@@ -438,16 +428,15 @@
           </div>
 
           <!-- Product Found Card -->
-          <div class="product-found-card" id="card-product-found">
+          <div class="product-found-card" id="card-product-found" style="display: none;">
             <div class="product-found-title">Product Found</div>
             <div class="product-found-row">
               <div class="product-found-meta">
-                <div class="product-thumb">
-                  <img id="found-prod-img" src="assets/grocery-basket.svg" alt="Product found" width="64" height="64" loading="lazy">
-                </div>
+                <img id="found-prod-img" class="found-product-image" alt="Product image from lookup source" hidden>
                 <div>
-                  <h3 id="found-prod-name" class="found-name">Product details</h3>
-                  <p id="found-prod-variant" class="found-variant">Scan or search a barcode</p>
+                  <h3 id="found-prod-name" class="found-name"></h3>
+                  <p id="found-prod-variant" class="found-variant"></p>
+                  <p id="found-prod-source" class="found-variant"></p>
                 </div>
               </div>
               <button class="btn-text-green" id="btn-edit-found" type="button">
@@ -458,6 +447,13 @@
                 Edit
               </button>
             </div>
+            <div class="product-conflict" id="found-product-conflict" hidden>
+              <img id="found-conflict-photo" class="found-conflict-photo" alt="Scanned package photo" hidden>
+              <p id="found-product-conflict-text"></p>
+              <button class="btn-secondary" id="btn-use-catalog-match" type="button" hidden>Use catalogue details</button>
+              <button class="btn-secondary" id="btn-use-photo-match" type="button" hidden>Use photo suggestion</button>
+            </div>
+            <button class="btn-text-green" id="btn-found-rescan" type="button">Scan another product</button>
           </div>
 
           <!-- Form inputs below found product (2 column grid) -->
@@ -467,8 +463,8 @@
               <input type="text" id="add-product-barcode" class="input-field" placeholder="Barcode">
             </div>
             <div class="form-group-compact">
-              <label class="form-compact-label" for="add-product-batch">Batch No.</label>
-              <input type="text" id="add-product-batch" class="input-field" placeholder="Batch number">
+              <label class="form-compact-label" for="add-product-mfg">Manufacturing date</label>
+              <input type="date" id="add-product-mfg" class="input-field">
             </div>
           </div>
 
@@ -487,6 +483,34 @@
                 <input type="date" id="add-product-expiry" class="input-field">
               </div>
             </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="add-product-batch">Batch / Lot No.</label>
+              <input type="text" id="add-product-batch" class="input-field" placeholder="Batch number">
+            </div>
+          </div>
+
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="add-product-best-before">Best-before date (if printed)</label>
+            <input type="date" id="add-product-best-before" class="input-field">
+          </div>
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="add-product-packaging">Packaging date (if printed)</label>
+            <input type="date" id="add-product-packaging" class="input-field">
+          </div>
+
+          <div class="date-scan-tools">
+            <input id="date-label-file-input" type="file" accept="image/*" capture="environment" hidden>
+            <button class="btn-secondary" id="btn-scan-mfg-exp" type="button">Scan MFG/EXP label</button>
+            <p class="date-scan-help">Take a close-up of the printed date and batch area. Hold the camera square to the package and avoid glare. Review the photo before reading.</p>
+            <div id="date-label-review" class="date-label-review" hidden>
+              <img id="date-label-preview" alt="Date label photo for review">
+              <div class="date-label-actions">
+                <button class="btn-secondary" id="btn-retake-date-label" type="button">Retake / choose another</button>
+                <button class="btn-primary" id="btn-read-date-label" type="button">Read dates from photo</button>
+              </div>
+              <p id="date-label-status" role="status" aria-live="polite"></p>
+              <div id="date-candidate-list" class="date-candidate-list"></div>
+            </div>
           </div>
 
           <button class="btn-primary" id="btn-save-scanned-inventory" type="button">
@@ -494,18 +518,20 @@
           </button>
         </div>
 
-        <!-- TAB 2: Manual Entry View -->
+        <!-- Manual entry is shown after lookup sources return no usable product. -->
         <div id="view-tab-manual" class="tab-view-content" style="display: none;">
+          <div id="manual-lookup-message" class="manual-lookup-message" hidden></div>
+          <button class="btn-text-green manual-scan-return" id="btn-manual-back-to-scan" type="button">&larr; Scan a barcode instead</button>
           <form id="form-manual-entry" onsubmit="return false;">
             <div class="form-group-compact">
               <label class="form-compact-label" for="manual-name">Product Name *</label>
-              <input type="text" id="manual-name" class="input-field" placeholder="e.g. Amul Milk (1L)" required>
+              <input type="text" id="manual-name" class="input-field" placeholder="Enter product name" required>
             </div>
 
             <div class="form-grid-2">
               <div class="form-group-compact">
                 <label class="form-compact-label" for="manual-brand">Brand</label>
-                <input type="text" id="manual-brand" class="input-field" placeholder="e.g. Amul">
+                <input type="text" id="manual-brand" class="input-field" placeholder="Optional brand">
               </div>
               <div class="form-group-compact">
                 <label class="form-compact-label" for="manual-category">Category</label>
@@ -523,7 +549,7 @@
             <div class="form-grid-2">
               <div class="form-group-compact">
                 <label class="form-compact-label" for="manual-barcode">Barcode *</label>
-                <input type="text" id="manual-barcode" class="input-field" placeholder="8901262010015" required>
+                <input type="text" id="manual-barcode" class="input-field" placeholder="Enter barcode" required>
               </div>
               <div class="form-group-compact">
                 <label class="form-compact-label" for="manual-batch">Batch No.</label>
@@ -704,16 +730,16 @@
         <!-- Selected Product Summary Card -->
         <div class="sale-product-card">
           <div class="product-thumb">
-            <img id="sale-prod-img" src="assets/amul-milk.svg" alt="Product">
+            <img id="sale-prod-img" src="assets/product-placeholder.svg" alt="Product image unavailable">
           </div>
           <div class="sale-prod-info">
-            <h3 id="sale-prod-name" class="sale-prod-title">Amul Milk (1L)</h3>
-            <p id="sale-prod-batch" class="sale-prod-meta">Batch B102</p>
+            <h3 id="sale-prod-name" class="sale-prod-title"></h3>
+            <p id="sale-prod-batch" class="sale-prod-meta"></p>
             <p class="sale-prod-stock-line">
-              Available Stock: <span id="sale-prod-stock">20 units</span>
+              Available Stock: <span id="sale-prod-stock"></span>
             </p>
           </div>
-          <span id="sale-prod-badge" class="badge badge-expired">Expires in 2 days</span>
+          <span id="sale-prod-badge" class="badge"></span>
         </div>
 
         <label class="form-compact-label" style="font-size: 14px; font-weight: 700; margin-top: 14px;">Quantity to Sell</label>
@@ -721,19 +747,21 @@
         <!-- Large Quantity Stepper Card -->
         <div class="sale-stepper-big">
           <button type="button" class="sale-stepper-btn" id="btn-sale-qty-dec">&minus;</button>
-          <span class="sale-stepper-val" id="sale-qty-val">5</span>
+          <span class="sale-stepper-val" id="sale-qty-val">1</span>
           <button type="button" class="sale-stepper-btn" id="btn-sale-qty-inc">&plus;</button>
         </div>
 
         <!-- Price Breakdown -->
+        <label class="form-compact-label" for="sale-unit-price">Unit price (₹)</label>
+        <input id="sale-unit-price" class="input-field" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Enter the actual sale price">
         <div class="sale-price-summary">
           <div>
             <div class="price-sub-label">Unit Price &times; Qty</div>
-            <div class="price-calc-val" id="sale-unit-calc">&#8377;50 &times; 5</div>
+            <div class="price-calc-val" id="sale-unit-calc">Enter a unit price</div>
           </div>
           <div style="text-align: right;">
             <div class="price-sub-label">Total Amount</div>
-            <div class="sale-price-total" id="sale-total-amount">&#8377;250</div>
+            <div class="sale-price-total" id="sale-total-amount">—</div>
           </div>
         </div>
 
@@ -801,7 +829,7 @@
 
         <!-- Camera / Scanned Image Preview -->
         <div class="viewfinder-box" style="height: 190px;">
-          <img id="scanned-image-preview" src="assets/grocery-basket.svg" alt="Scanned item" class="viewfinder-sample-img" width="240" height="240">
+          <img id="scanned-image-preview" alt="Uploaded expiry label" class="viewfinder-sample-img" width="240" height="240" style="display: none;">
           <div class="viewfinder-overlay">
             <div class="viewfinder-frame" style="width: 200px; height: 120px;">
               <span class="corner top-left"></span>
@@ -816,17 +844,14 @@
         <!-- Dark Navy Scanned Barcode Chip -->
         <div class="scanned-barcode-chip-row">
           <span class="scanned-barcode-pill" id="badge-scanned-barcode">
-            8901234567890
           </span>
         </div>
 
         <!-- Product Preview Card -->
         <div class="card product-item-preview">
-          <div class="product-thumb">
-            <img id="res-prod-img" src="assets/grocery-basket.svg" alt="Product" width="56" height="56" loading="lazy">
-          </div>
           <div style="flex: 1;">
-            <h3 id="res-prod-name" class="product-name">Product details</h3>
+            <label class="form-compact-label" for="res-prod-name">Product name *</label>
+            <input id="res-prod-name" class="input-field" type="text" autocomplete="off" placeholder="Enter the product name" required>
             <p id="res-prod-variant" class="product-meta"></p>
           </div>
         </div>
@@ -848,8 +873,19 @@
             <input type="date" id="res-mfg-date" class="input-field">
             </div>
             <div class="form-group-compact">
+              <label class="form-compact-label" for="res-packaging-date">Packaging Date</label>
+              <input type="date" id="res-packaging-date" class="input-field">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group-compact">
               <label class="form-compact-label" for="res-expiry-date">Expiry Date</label>
               <input type="date" id="res-expiry-date" class="input-field">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="res-best-before-date">Best-before Date</label>
+              <input type="date" id="res-best-before-date" class="input-field">
             </div>
           </div>
 
@@ -863,6 +899,7 @@
               <input type="number" id="res-quantity" class="input-field" value="1" min="1">
             </div>
           </div>
+          <div id="res-date-candidate-list" class="date-candidate-list"></div>
         </div>
 
         <button class="btn-primary" id="btn-confirm-add-scanned" type="button">

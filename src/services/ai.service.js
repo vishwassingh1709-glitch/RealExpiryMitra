@@ -224,6 +224,86 @@ Rules:
 }
 
 /**
+ * Identify product details visible in a package photo. This is deliberately a
+ * suggestion-only path; barcode association and shopkeeper confirmation remain
+ * the responsibility of the product identification workflow.
+ */
+async function identifyProductFromImage(imageData, barcode, { signal } = {}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  if (typeof imageData !== "string" || imageData.length > 10 * 1024 * 1024) throw new Error("Product image is missing or too large");
+  const match = imageData.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) throw new Error("Product image must be JPEG, PNG, or WebP data");
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_PRODUCT_MODEL || process.env.GEMINI_MODEL || "gemini-1.5-flash",
+    generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
+  });
+  const prompt = `Identify the single packaged retail product, if clearly visible, in this photo. The barcode decoded from this same package image is ${JSON.stringify(barcode)}. Use visual packaging text and brand marks only. Do not guess missing details and do not infer expiry, manufacturing date, batch, price, or barcode digits. If the photo is a close-up of only a barcode, blurry, ambiguous, or contains multiple plausible products, set product_visible to false. Return JSON only with this shape: {"product_visible":boolean,"name":string|null,"brand":string|null,"category":string|null,"packaging_evidence":string|null,"confidence":number}. Confidence must reflect visible packaging evidence.`;
+  const result = await model.generateContent([
+    { text: prompt },
+    { inlineData: { mimeType: match[1].toLowerCase().replace("jpg", "jpeg"), data: match[2] } }
+  ], { signal, timeout: Number(process.env.PRODUCT_IDENTIFICATION_TIMEOUT_MS || 8000) });
+  let text = result.response.text().trim();
+  if (text.startsWith("```")) text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const candidate = JSON.parse(text);
+  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+  const evidence = typeof candidate.packaging_evidence === "string" ? candidate.packaging_evidence.trim() : "";
+  const confidence = Number(candidate.confidence);
+  if (candidate.product_visible !== true || !name || !evidence || !Number.isFinite(confidence) || confidence < 0.65) return null;
+  return {
+    barcode,
+    name: name.slice(0, 180),
+    brand: typeof candidate.brand === "string" ? candidate.brand.trim().slice(0, 100) : "",
+    category: typeof candidate.category === "string" ? candidate.category.trim().slice(0, 100) : "",
+    image_url: null,
+    packaging_evidence: evidence.slice(0, 240),
+    confidence: Math.min(1, Math.max(0, confidence)),
+    source: "gemini_candidate",
+    source_label: "Gemini photo suggestion",
+    verification_status: "unverified"
+  };
+}
+
+/** Reads date and lot text from the supplied package-label photo only. */
+async function identifyDatesFromImage(imageData) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const match = typeof imageData === "string" && imageData.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match || imageData.length > 10 * 1024 * 1024) throw new Error("A valid label photo is required");
+  const timeoutMs = Number(process.env.DATE_GEMINI_TIMEOUT_MS || 8000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000);
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+      generationConfig: { temperature: 0, responseMimeType: "application/json" }
+    });
+    const prompt = `Read only text visibly printed in this date/batch label photograph. Do not use the product name, barcode, typical shelf life, or outside knowledge to infer any date. Preserve printed date precision and wording. If unreadable or uncertain, return null for that field and list it in uncertain_fields. Return JSON only: {"manufacturing_date":string|null,"packaging_date":string|null,"expiry_date":string|null,"best_before_date":string|null,"batch_number":string|null,"raw_visible_text":string,"uncertain_fields":string[]}. Dates must be returned exactly as printed, not normalized or completed. Keep expiry/use-by distinct from best-before and packaging date.`;
+    const result = await model.generateContent([
+      { text: prompt },
+      { inlineData: { mimeType: match[1].toLowerCase().replace("jpg", "jpeg"), data: match[2] } }
+    ], { signal: controller.signal, timeout: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000 });
+    let responseText = result.response.text().trim();
+    if (responseText.startsWith("```")) responseText = responseText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    const parsed = JSON.parse(responseText);
+    const fields = ["manufacturing_date", "packaging_date", "expiry_date", "best_before_date", "batch_number"];
+    for (const field of fields) {
+      if (parsed[field] === undefined) parsed[field] = null;
+      if (parsed[field] !== null && typeof parsed[field] !== "string") throw new Error("Invalid Gemini field type");
+      if (typeof parsed[field] === "string") parsed[field] = parsed[field].slice(0, 120);
+    }
+    parsed.raw_visible_text = typeof parsed.raw_visible_text === "string" ? parsed.raw_visible_text.slice(0, 1000) : "";
+    parsed.uncertain_fields = Array.isArray(parsed.uncertain_fields) ? parsed.uncertain_fields.map(String).slice(0, 10) : [];
+    return parsed;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Main interpretation function with Gemini AI and deterministic parser fallback.
  */
 async function interpretExpiry(rawText, productInfo = {}) {
@@ -239,7 +319,7 @@ async function interpretExpiry(rawText, productInfo = {}) {
   }
 
   // 1. Mock mode for unit tests
-  if (process.env.AI_MODE === "mock") {
+  if (process.env.NODE_ENV === "test" && process.env.AI_MODE === "mock") {
     return interpretExpiryDeterministic(rawText);
   }
 
@@ -289,6 +369,8 @@ module.exports = {
   interpretExpiry,
   interpretExpiryDeterministic,
   callGeminiApi,
+  identifyProductFromImage,
+  identifyDatesFromImage,
   MFG_REGEX,
   EXP_REGEX,
   RELATIVE_EXP_REGEX,

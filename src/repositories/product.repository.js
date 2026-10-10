@@ -4,6 +4,7 @@
 
 const { getFirestoreDb } = require("./firestore");
 const { read, write } = require("./storage");
+const { normalizeBarcode, barcodeCandidates, canonicalBarcode } = require("../utils/barcode");
 
 const COLLECTION = "products";
 const JSON_FILE = "products.json";
@@ -21,25 +22,28 @@ function isFirestoreActive() {
  */
 async function get(barcode) {
   if (!barcode) return null;
-  const normalizedBarcode = String(barcode).trim();
+  const normalizedBarcode = normalizeBarcode(barcode);
+  const candidates = barcodeCandidates(normalizedBarcode);
   const db = getFirestoreDb();
 
   if (isFirestoreActive() && db) {
-    const doc = await db.collection(COLLECTION).doc(normalizedBarcode).get();
-    if (doc.exists) {
-      return { id: doc.id, ...doc.data() };
+    for (const candidate of candidates) {
+      const doc = await db.collection(COLLECTION).doc(candidate).get();
+      if (doc.exists) return { id: doc.id, ...doc.data() };
     }
     // Also try barcode query if document ID wasn't barcode
-    const snapshot = await db.collection(COLLECTION).where("barcode", "==", normalizedBarcode).limit(1).get();
-    if (!snapshot.empty) {
-      const firstDoc = snapshot.docs[0];
-      return { id: firstDoc.id, ...firstDoc.data() };
+    for (const candidate of candidates) {
+      const snapshot = await db.collection(COLLECTION).where("barcode", "==", candidate).limit(1).get();
+      if (!snapshot.empty) {
+        const firstDoc = snapshot.docs[0];
+        return { id: firstDoc.id, ...firstDoc.data() };
+      }
     }
     return null;
   }
 
   const products = await read(JSON_FILE, []);
-  return products.find((p) => p.barcode === normalizedBarcode) || null;
+  return products.find((p) => candidates.includes(normalizeBarcode(p.barcode))) || null;
 }
 
 /**
@@ -48,28 +52,34 @@ async function get(barcode) {
  * @returns {Promise<object>}
  */
 async function save(product) {
-  const normalizedBarcode = String(product.barcode || "").trim();
+  const scannedBarcode = normalizeBarcode(product.barcode);
+  if (!scannedBarcode || !String(product.name || "").trim()) throw new Error("A valid barcode and product name are required");
+  const normalizedBarcode = canonicalBarcode(scannedBarcode);
+  const existing = await get(scannedBarcode);
   const timestamp = new Date().toISOString();
   const record = {
-    id: product.id || `prod_${normalizedBarcode}`,
+    id: existing?.id || product.id || `prod_${normalizedBarcode}`,
     barcode: normalizedBarcode,
-    name: product.name ? String(product.name).trim() : "Unknown product",
-    brand: product.brand ? String(product.brand).trim() : "",
-    category: product.category ? String(product.category).trim() : "Other",
-    image_url: product.image_url || null,
-    source: product.source || "local",
-    created_at: product.created_at || timestamp,
+    name: product.name ? String(product.name).trim() : "",
+    brand: product.brand ? String(product.brand).trim() : (existing?.brand || ""),
+    category: product.category && product.category !== "Other" ? String(product.category).trim() : (existing?.category || (product.category === "Other" ? "Other" : "")),
+    image_url: product.image_url || existing?.image_url || null,
+    source: product.source === "open_food_facts" || product.source === "external_api" ? "manual" : (product.source || "manual"),
+    source_label: product.source_label || "Shopkeeper confirmed",
+    verification_status: "confirmed",
+    created_at: existing?.created_at || product.created_at || timestamp,
     updated_at: timestamp
   };
 
   const db = getFirestoreDb();
   if (isFirestoreActive() && db) {
-    await db.collection(COLLECTION).doc(record.barcode).set(record, { merge: true });
+    await db.collection(COLLECTION).doc(existing?.barcode || record.barcode).set(record, { merge: true });
     return record;
   }
 
   const products = await read(JSON_FILE, []);
-  const index = products.findIndex((p) => p.barcode === record.barcode);
+  const candidates = barcodeCandidates(scannedBarcode);
+  const index = products.findIndex((p) => candidates.includes(normalizeBarcode(p.barcode)));
   if (index >= 0) {
     products[index] = { ...products[index], ...record };
   } else {

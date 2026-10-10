@@ -1,4 +1,5 @@
 const test = require("node:test");
+require("./helpers/preserve-data");
 const assert = require("node:assert/strict");
 
 const saleService = require("../src/services/sale.service");
@@ -129,3 +130,4 @@ test("store service returns profile and allows updates", async () => {
     store_name: "Sharma Store"
   });
 });
+require("./helpers/preserve-data");

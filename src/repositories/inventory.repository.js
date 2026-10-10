@@ -88,10 +88,10 @@ async function list(options = {}, storeId = "store_default") {
   // Sorting
   items.sort((a, b) => {
     if (sortBy === "expiry_asc") {
-      return (a.expiry_date || "").localeCompare(b.expiry_date || "");
+      return (a.expiry_date || a.best_before_date || "").localeCompare(b.expiry_date || b.best_before_date || "");
     }
     if (sortBy === "expiry_desc") {
-      return (b.expiry_date || "").localeCompare(a.expiry_date || "");
+      return (b.expiry_date || b.best_before_date || "").localeCompare(a.expiry_date || a.best_before_date || "");
     }
     if (sortBy === "name_asc") {
       return (a.product_name || "").localeCompare(b.product_name || "");
