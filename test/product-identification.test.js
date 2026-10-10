@@ -7,11 +7,13 @@ process.env.OPEN_FOOD_FACTS_TIMEOUT_MS = "35";
 process.env.PRODUCT_LOOKUP_TIMEOUT_MS = "80";
 process.env.PRODUCT_IDENTIFICATION_TIMEOUT_MS = "80";
 process.env.GEMINI_API_KEY = "test-only";
+delete process.env.GROQ_API_KEY;
 
 const productService = require("../src/services/product.service");
 const productRepo = require("../src/repositories/product.repository");
 const inventoryRepo = require("../src/repositories/inventory.repository");
 const aiService = require("../src/services/ai.service");
+const groqProductSearch = require("../src/services/groq-product-search.service");
 
 function ean13(seed) {
   const body = String(seed).replace(/\D/g, "").padStart(12, "5").slice(-12);
@@ -110,38 +112,35 @@ test("unknown code and timed-out sources do not produce fabricated matches", asy
   finally { timed.restore(); }
 });
 
-test("a photo candidate waits for catalogue lookup and conflicting identity is surfaced", async () => {
+test("a verified catalogue match wins without starting the lower-priority Gemini fallback", async () => {
   const barcode = ean13("59012340999");
+  let geminiCalls = 0;
   const h = setup({
     fetchImpl: async () => noOffProduct(),
-    gemini: async () => ({ barcode, name: "Britannia Biscuits", brand: "Britannia", category: "Snacks", source: "gemini_candidate", verification_status: "unverified" })
+    gemini: async () => { geminiCalls += 1; return null; }
   });
   const oldGet = productRepo.get;
   productRepo.get = async (value) => { await new Promise((resolve) => setTimeout(resolve, 20)); return value === barcode ? { barcode, name: "Amul Butter", brand: "Amul", source: "manual", verification_status: "confirmed" } : null; };
   try {
     const result = await productService.identifyProduct(barcode, "conflict_store", image);
-    assert.equal(result.status, "conflict");
+    assert.equal(result.status, "found");
     assert.equal(result.product.name, "Amul Butter");
-    assert.equal(result.candidate.name, "Britannia Biscuits");
+    assert.equal(geminiCalls, 0);
   } finally { productRepo.get = oldGet; h.restore(); }
 });
 
-test("Gemini failures fall back, and a late Gemini result is cancelled/ignored after a verified hit", async () => {
+test("Gemini failures fall back, and a verified catalogue hit avoids unnecessary Gemini work", async () => {
   const failedBarcode = ean13("59012990000");
   const failed = setup({ fetchImpl: async () => noOffProduct(), gemini: async () => { throw new Error("Gemini offline"); } });
   try { assert.equal((await productService.identifyProduct(failedBarcode, "gemini_failure_store", image)).status, "not_found"); }
   finally { failed.restore(); }
 
   const barcode = ean13("59012990001");
-  let receivedSignal;
-  let releaseLate;
+  let geminiCalls = 0;
   const late = setup({
     catalog: { barcode, name: "Verified fast result", source: "manual", verification_status: "confirmed" },
     fetchImpl: async () => noOffProduct(),
-    gemini: (_image, _barcode, { signal }) => {
-      receivedSignal = signal;
-      return new Promise((resolve) => { releaseLate = resolve; });
-    }
+    gemini: async () => { geminiCalls += 1; return null; }
   });
   inventoryRepo.getByBarcode = () => new Promise(() => {});
   try {
@@ -150,9 +149,7 @@ test("Gemini failures fall back, and a late Gemini result is cancelled/ignored a
       new Promise((_, reject) => setTimeout(() => reject(new Error("verified catalogue result waited on inventory/Gemini")), 25))
     ]);
     assert.equal(result.product.name, "Verified fast result");
-    assert.equal(receivedSignal.aborted, true);
-    releaseLate({ name: "Unrelated late candidate", source: "gemini_candidate" });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(geminiCalls, 0);
     assert.equal(result.product.name, "Verified fast result");
   } finally { late.restore(); }
 });
@@ -170,4 +167,129 @@ test("identical simultaneous identification requests share the same work", async
     release();
     assert.deepEqual(await first, await second);
   } finally { h.restore(); }
+});
+
+function groqCandidateText(barcode) {
+  return [
+    "RESULT: MATCH",
+    "PRODUCT NAME: Fixture packaged tea 250 g",
+    "BRAND: Fixture brand",
+    "PACKAGE SIZE: 250 g",
+    `EXACT BARCODE: ${barcode}`,
+    "EXACT MATCH: YES",
+    `EVIDENCE: Manufacturer product page explicitly lists barcode ${barcode} for Fixture packaged tea 250 g.`,
+    "SOURCE URLS: https://manufacturer.example/products/tea"
+  ].join("\n");
+}
+
+test("Groq Browser Search only returns an unverified candidate with exact barcode evidence and source URLs", async () => {
+  const barcode = `0${ean13("59012345678")}`;
+  const priorKey = process.env.GROQ_API_KEY;
+  const priorModel = process.env.GROQ_BROWSER_SEARCH_MODEL;
+  process.env.GROQ_API_KEY = "test-key-never-logged";
+  delete process.env.GROQ_BROWSER_SEARCH_MODEL;
+  try {
+    const result = await groqProductSearch.lookupBarcodeOnWeb(barcode, {
+      fetchImpl: async (url, options) => {
+        assert.equal(url, "https://api.groq.com/openai/v1/chat/completions");
+        assert.equal(options.headers.Authorization, "Bearer test-key-never-logged");
+        const request = JSON.parse(options.body);
+        assert.equal(request.model, "openai/gpt-oss-20b");
+        assert.deepEqual(request.tools, [{ type: "browser_search" }]);
+        assert.equal(request.tool_choice, "required");
+        assert.match(request.messages[0].content, new RegExp(barcode));
+        return new Response(JSON.stringify({ choices: [{ message: { content: groqCandidateText(barcode) } }] }), { status: 200 });
+      }
+    });
+    assert.equal(result.status, "found");
+    assert.equal(result.product.barcode, barcode, "leading zero is preserved");
+    assert.equal(result.product.verification_status, "unverified");
+    assert.equal(result.product.exact_barcode_match, true);
+    assert.deepEqual(result.product.source_urls, ["https://manufacturer.example/products/tea"]);
+  } finally {
+    if (priorKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = priorKey;
+    if (priorModel === undefined) delete process.env.GROQ_BROWSER_SEARCH_MODEL; else process.env.GROQ_BROWSER_SEARCH_MODEL = priorModel;
+  }
+});
+
+test("Groq falls through on missing key, unsupported model, malformed evidence, and unknown barcode", async () => {
+  const barcode = ean13("59012341235");
+  const priorKey = process.env.GROQ_API_KEY;
+  const priorModel = process.env.GROQ_BROWSER_SEARCH_MODEL;
+  const priorTimeout = process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS;
+  try {
+    delete process.env.GROQ_API_KEY;
+    assert.deepEqual(await groqProductSearch.lookupBarcodeOnWeb(barcode, { fetchImpl: async () => { throw new Error("must not call"); } }), { status: "not_configured" });
+
+    process.env.GROQ_API_KEY = "test-key";
+    process.env.GROQ_BROWSER_SEARCH_MODEL = "unsupported/search-model";
+    assert.deepEqual(await groqProductSearch.lookupBarcodeOnWeb(barcode, { fetchImpl: async () => { throw new Error("must not call"); } }), { status: "unsupported_model" });
+
+    process.env.GROQ_BROWSER_SEARCH_MODEL = "openai/gpt-oss-20b";
+    const uncertain = groqProductSearch.parseBrowserSearchResponse({ choices: [{ message: { content: "RESULT: UNCERTAIN\nPRODUCT NAME: Similar tea\nEVIDENCE: Similar product only\nSOURCE URLS: https://retailer.example/item" } }] }, barcode);
+    assert.deepEqual(uncertain, { status: "not_found" }, "a similar result without an explicit exact barcode is rejected");
+    const wrongBarcode = groqProductSearch.parseBrowserSearchResponse({ choices: [{ message: { content: groqCandidateText(ean13("59012349999")) } }] }, barcode);
+    assert.deepEqual(wrongBarcode, { status: "not_found" }, "evidence for a different barcode is rejected");
+    const malformed = await groqProductSearch.lookupBarcodeOnWeb(ean13("59012341236"), {
+      fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: "A product may exist, but no source details were returned." } }] }), { status: 200 })
+    });
+    assert.deepEqual(malformed, { status: "malformed_response" });
+
+    const h = setup({ fetchImpl: async (url, options) => {
+      if (String(url).includes("openfoodfacts")) return noOffProduct();
+      return new Response(JSON.stringify({ choices: [{ message: { content: "RESULT: NOT_FOUND" } }] }), { status: 200 });
+    } });
+    try {
+      const result = await productService.identifyProduct(barcode, "groq_unknown_store");
+      assert.equal(result.status, "not_found");
+    } finally { h.restore(); }
+  } finally {
+    if (priorKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = priorKey;
+    if (priorModel === undefined) delete process.env.GROQ_BROWSER_SEARCH_MODEL; else process.env.GROQ_BROWSER_SEARCH_MODEL = priorModel;
+    if (priorTimeout === undefined) delete process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS; else process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS = priorTimeout;
+  }
+});
+
+test("Groq timeout and rate limits are bounded and classified without exposing credentials", async () => {
+  const barcode = ean13("59012345670");
+  const priorKey = process.env.GROQ_API_KEY;
+  const priorTimeout = process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS;
+  process.env.GROQ_API_KEY = "test-key";
+  process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS = "10";
+  try {
+    const timeout = await groqProductSearch.lookupBarcodeOnWeb(barcode, {
+      fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true }))
+    });
+    assert.deepEqual(timeout, { status: "timeout" });
+    const limited = await groqProductSearch.lookupBarcodeOnWeb(ean13("59012345671"), {
+      fetchImpl: async () => new Response("{}", { status: 429 })
+    });
+    assert.deepEqual(limited, { status: "rate_limited" });
+  } finally {
+    if (priorKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = priorKey;
+    if (priorTimeout === undefined) delete process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS; else process.env.GROQ_PRODUCT_LOOKUP_TIMEOUT_MS = priorTimeout;
+  }
+});
+
+test("Groq candidate is attempted after OFF miss and before Gemini photo fallback", async () => {
+  const barcode = ean13("59012345002");
+  const priorKey = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "test-key";
+  let geminiCalls = 0;
+  const h = setup({
+    fetchImpl: async (url) => String(url).includes("openfoodfacts")
+      ? noOffProduct()
+      : new Response(JSON.stringify({ choices: [{ message: { content: groqCandidateText(barcode) } }] }), { status: 200 }),
+    gemini: async () => { geminiCalls += 1; return null; }
+  });
+  try {
+    const result = await productService.identifyProduct(barcode, "groq_order_store", image);
+    assert.equal(result.status, "found");
+    assert.equal(result.product.source, "groq_browser_search_candidate");
+    assert.equal(result.product.verification_status, "unverified");
+    assert.equal(geminiCalls, 0, "Gemini is reserved for when Groq cannot produce an evidence-backed candidate");
+  } finally {
+    h.restore();
+    if (priorKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = priorKey;
+  }
 });

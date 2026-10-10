@@ -17,7 +17,9 @@ router.get("/", async (_req, res, next) => {
 // Barcode lookup (GET)
 router.post("/identify", async (req, res, next) => {
   try {
-    const barcode = normalizeBarcode(req.body?.barcode);
+    const submittedBarcode = req.body?.barcode;
+    if (typeof submittedBarcode !== "string") return res.status(400).json({ success: false, status: "invalid", message: "Barcode must be provided as text to preserve leading zeros" });
+    const barcode = normalizeBarcode(submittedBarcode);
     if (!barcode) return res.status(400).json({ success: false, status: "invalid", message: "A valid barcode is required" });
     const image = req.body?.image ?? null;
     if (image !== null && (typeof image !== "string" || image.length > 10 * 1024 * 1024)) {
@@ -25,11 +27,11 @@ router.post("/identify", async (req, res, next) => {
     }
     const result = await productService.identifyProduct(barcode, req.user.store_id, image);
     const normalized_barcode = extractGs1Gtin(barcode) || barcode;
-    if (result.status === "found" || result.status === "conflict") return res.json({ success: true, normalized_barcode, ...result });
-    if (result.status === "unavailable") return res.status(503).json({ success: false, normalized_barcode, ...result, message: "Product lookup is temporarily unavailable" });
-    if (result.status === "invalid_image") return res.status(400).json({ success: false, normalized_barcode, ...result, message: "Product photo format is not supported" });
-    if (result.status === "invalid") return res.status(400).json({ success: false, normalized_barcode, ...result, message: "Barcode format is invalid" });
-    return res.status(404).json({ success: false, normalized_barcode, ...result, message: "Product not found" });
+    if (result.status === "found" || result.status === "conflict") return res.json({ success: true, scanned_barcode: barcode, normalized_barcode, ...result });
+    if (result.status === "unavailable") return res.status(503).json({ success: false, scanned_barcode: barcode, normalized_barcode, ...result, message: "Product lookup is temporarily unavailable" });
+    if (result.status === "invalid_image") return res.status(400).json({ success: false, scanned_barcode: barcode, normalized_barcode, ...result, message: "Product photo format is not supported" });
+    if (result.status === "invalid") return res.status(400).json({ success: false, scanned_barcode: barcode, normalized_barcode, ...result, message: "Barcode format is invalid" });
+    return res.status(404).json({ success: false, scanned_barcode: barcode, normalized_barcode, ...result, message: "Product not found" });
   } catch (error) { next(error); }
 });
 

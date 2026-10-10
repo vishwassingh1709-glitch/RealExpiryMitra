@@ -272,6 +272,12 @@ copy .env.example .env
    GEMINI_MODEL=gemini-1.5-flash
    ```
 
+### Barcode identification web-search fallback
+- Set `GROQ_API_KEY` in the server environment. The key is read only by the Express backend and is never sent to the browser.
+- Browser search uses `GROQ_BROWSER_SEARCH_MODEL=openai/gpt-oss-20b` by default. See [Groq's Browser Search model and request documentation](https://console.groq.com/docs/tool-use/built-in-tools/browser-search) for supported models.
+- `GROQ_PRODUCT_LOOKUP_TIMEOUT_MS` defaults to 6500 ms. Groq results stay unverified suggestions and include source links; a shopkeeper must confirm them before they enter the catalogue.
+- The existing Gemini product-photo fallback requires `GEMINI_API_KEY`. Set `GEMINI_PRODUCT_MODEL` to a currently supported [Gemini API model](https://ai.google.dev/gemini-api/docs/models) if the fallback is enabled. The retired `gemini-1.5-flash` default may fail.
+
 ### 3. OCR Engine Configuration
 - **Default**: `OCR_PROVIDER=tesseract` runs completely locally without external network requests or keys.
 - **Cloud OCR**: Set `OCR_PROVIDER=ocr_space` and supply `OCR_API_KEY` from [ocr.space](https://ocr.space/ocrapi).

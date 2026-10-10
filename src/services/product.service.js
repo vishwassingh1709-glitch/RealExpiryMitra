@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const productRepo = require("../repositories/product.repository");
 const inventoryRepo = require("../repositories/inventory.repository");
 const aiService = require("./ai.service");
+const groqProductSearch = require("./groq-product-search.service");
 const { normalizeBarcode, extractGs1Gtin, barcodeCandidates, isRetailGtin, hasValidGs1CheckDigit } = require("../utils/barcode");
 
 function positiveTimeout(value, fallback) {
@@ -142,86 +143,52 @@ async function lookupOpenFoodFacts(barcode, candidates) {
   try { return await task; } finally { offLookupsInFlight.delete(key); }
 }
 
-function materiallyDisagrees(product, candidate) {
-  if (!product?.name || !candidate?.name) return false;
-  const clean = (value) => String(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const brandA = clean(product.brand || "");
-  const brandB = clean(candidate.brand || "");
-  if (brandA && brandB && brandA !== brandB) return true;
-  const a = new Set(clean(product.name).split(/\s+/).filter((word) => word.length > 1));
-  const b = new Set(clean(candidate.name).split(/\s+/).filter((word) => word.length > 1));
-  if (!a.size || !b.size) return clean(product.name) !== clean(candidate.name);
-  const overlap = [...a].filter((word) => b.has(word)).length;
-  return overlap / Math.min(a.size, b.size) <= 0.5;
-}
-
-function selectedReliableProduct(product, candidate) {
-  if (candidate && materiallyDisagrees(product, candidate)) {
-    return { status: "conflict", product, candidate };
-  }
-  return { status: "found", product };
-}
-
 async function identifyUnshared(barcode, storeId, image) {
   const candidates = barcodeCandidates(barcode);
-  if (/^\d+$/.test(barcode) && [8, 12, 13, 14].includes(barcode.length) && !hasValidGs1CheckDigit(barcode)) {
-    // Keep custom/legacy catalogue keys usable, but do not send a bad GTIN to public services.
-    const legacyLocal = await bounded(lookupLocalProduct(barcode, candidates, storeId), LOOKUP_TIMEOUT_MS, { status: "unavailable" });
-    return legacyLocal.status === "found" ? legacyLocal : { status: "invalid" };
-  }
-
-  const geminiController = new AbortController();
-  let geminiSettled = false;
-  let geminiValue = null;
+  const invalidRetailGtin = /^\d+$/.test(barcode) && [8, 12, 13, 14].includes(barcode.length) && !hasValidGs1CheckDigit(barcode);
+  const validRetailGtin = isRetailGtin(barcode);
   const localPromise = bounded(lookupLocalProduct(barcode, candidates, storeId), LOOKUP_TIMEOUT_MS, { status: "unavailable" });
-  const offPromise = lookupOpenFoodFacts(barcode, candidates);
-  const geminiEnabled = Boolean(image && process.env.GEMINI_API_KEY);
-  const geminiPromise = geminiEnabled
-    ? bounded(
-        aiService.identifyProductFromImage(image, barcode, { signal: geminiController.signal })
-          .catch((error) => { console.warn("Gemini product suggestion unavailable:", error.message); return null; }),
-        GEMINI_TIMEOUT_MS,
-        null
-      ).finally(() => { geminiSettled = true; })
-    : Promise.resolve(null).then((value) => { geminiSettled = true; return value; });
-  geminiPromise.then((value) => { geminiValue = value; });
+  const offPromise = validRetailGtin ? lookupOpenFoodFacts(barcode, candidates) : Promise.resolve({ status: "not_found" });
 
   const local = await localPromise;
-  if (local.status === "found") {
-    const result = selectedReliableProduct(local.product, geminiSettled ? geminiValue : null);
-    try { geminiController.abort(); } catch (_) {}
-    return result;
-  }
+  if (local.status === "found") return local;
 
-  // Product lookup services run concurrently. If the image model finishes first,
-  // hold its candidate until the higher-priority catalogue and OFF result settle.
-  let off;
-  let gemini;
-  if (geminiEnabled) {
-    const first = await Promise.race([
-      offPromise.then((result) => ({ source: "off", result })),
-      geminiPromise.then((result) => ({ source: "gemini", result }))
-    ]);
-    if (first.source === "off") {
-      off = first.result;
-      if (off.status === "found") {
-        gemini = geminiSettled ? geminiValue : null;
-        try { geminiController.abort(); } catch (_) {}
-        return selectedReliableProduct(off.product, gemini);
-      }
-      gemini = await geminiPromise;
-    } else {
-      gemini = first.result;
-      off = await offPromise;
+  const off = await offPromise;
+  if (off.status === "found") return off;
+
+  const groq = await groqProductSearch.lookupBarcodeOnWeb(barcode);
+  if (groq.status === "found") return groq;
+
+  let gemini = null;
+  if (image && process.env.GEMINI_API_KEY) {
+    const controller = new AbortController();
+    let timedOut = false;
+    let timer;
+    try {
+      gemini = await Promise.race([
+        aiService.identifyProductFromImage(image, barcode, { signal: controller.signal })
+          .catch((error) => {
+            if (!timedOut) console.warn("Gemini product suggestion unavailable:", error.name || "request failed");
+            return null;
+          }),
+        new Promise((resolve) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            resolve(null);
+          }, GEMINI_TIMEOUT_MS);
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+      try { controller.abort(); } catch (_) {}
     }
-  } else {
-    off = await offPromise;
   }
-
-  if (off?.status === "found") return selectedReliableProduct(off.product, gemini);
   if (gemini) return { status: "found", product: gemini };
-  if (off?.status === "unavailable") return { status: "unavailable" };
-  if (local.status === "unavailable") return { status: "unavailable" };
+
+  const remoteUnavailable = [off.status, groq.status].some((status) => ["unavailable", "timeout", "rate_limited", "unsupported_model", "malformed_response"].includes(status));
+  if (remoteUnavailable || local.status === "unavailable") return { status: "unavailable" };
+  if (invalidRetailGtin) return { status: "invalid" };
   return { status: "not_found" };
 }
 

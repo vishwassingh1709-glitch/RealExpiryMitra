@@ -1365,8 +1365,8 @@ function renderIdentifiedProduct(product) {
   document.getElementById("btn-use-catalog-match").hidden = true;
   document.getElementById("btn-use-photo-match").hidden = true;
   document.getElementById("found-prod-name").textContent = product.name || "";
-  document.getElementById("found-prod-variant").textContent = [product.brand, product.category].filter(Boolean).join(" • ");
-  document.getElementById("add-product-barcode").value = product.barcode || state.lastScannedBarcode || "";
+  document.getElementById("found-prod-variant").textContent = [product.brand, product.category, product.package_size].filter(Boolean).join(" • ");
+  document.getElementById("add-product-barcode").value = state.lastScannedBarcode || product.barcode || "";
   document.getElementById("add-product-name").value = product.name || "";
   document.getElementById("add-product-brand").value = product.brand || "";
   const category = document.getElementById("add-product-category");
@@ -1374,8 +1374,27 @@ function renderIdentifiedProduct(product) {
   const sourceText = document.getElementById("found-prod-source");
   if (sourceText) {
     const unverified = product.verification_status === "unverified";
-    sourceText.textContent = `${product.source_label || "Product source"}${unverified ? " · suggestion; verify before saving" : " · verified"}`;
-    if (product.packaging_evidence) sourceText.textContent += ` · ${product.packaging_evidence}`;
+    sourceText.replaceChildren(document.createTextNode(`${product.source_label || "Product source"}${unverified ? " · suggestion; verify before saving" : " · verified"}`));
+    if (product.exact_barcode_match) sourceText.append(document.createTextNode(" · exact barcode evidence"));
+    if (product.packaging_evidence || product.evidence) sourceText.append(document.createTextNode(` · ${product.packaging_evidence || product.evidence}`));
+    if (Array.isArray(product.source_urls) && product.source_urls.length) {
+      sourceText.append(document.createTextNode(" · Sources: "));
+      let addedSource = false;
+      product.source_urls.slice(0, 5).forEach((sourceUrl) => {
+        try {
+          const url = new URL(sourceUrl);
+          if (url.protocol !== "https:") return;
+          if (addedSource) sourceText.append(document.createTextNode(", "));
+          const link = document.createElement("a");
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = url.hostname;
+          sourceText.append(link);
+          addedSource = true;
+        } catch (_) {}
+      });
+    }
   }
   const productImage = document.getElementById("found-prod-img");
   let imageUrl = null;
@@ -1453,7 +1472,7 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
           ? "This barcode failed validation. Correct it below or enter the product details manually."
           : "No source could identify this product. Enter its details manually.";
       if (statusText) statusText.textContent = "Manual product details needed";
-      showManualEntryForBarcode(data.normalized_barcode || barcode, message);
+      showManualEntryForBarcode(data.scanned_barcode || state.lastScannedBarcode || barcode, message);
       showToast("Product details were not identified. Manual entry is ready.", "info");
     }
   } catch (err) {
