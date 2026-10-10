@@ -1597,6 +1597,66 @@ body {
 }
 
 /* Add Product-only scanner sizing for compact phone screens. */
+#screen-add-product .add-step-indicator {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+#screen-add-product .add-step-indicator li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--navy-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+
+#screen-add-product .add-step-indicator li > span:first-child {
+  display: inline-grid;
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  place-items: center;
+  border: 1px solid var(--card-border);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--navy-muted);
+}
+
+#screen-add-product .add-step-indicator li.active,
+#screen-add-product .add-step-indicator li.complete { color: var(--navy); }
+
+#screen-add-product .add-step-indicator li.active > span:first-child,
+#screen-add-product .add-step-indicator li.complete > span:first-child {
+  border-color: var(--green, #16845b);
+  background: var(--green, #16845b);
+  color: #fff;
+}
+
+#screen-add-product .add-product-flow,
+#screen-add-product .add-step-panel { min-width: 0; width: 100%; }
+
+#screen-add-product .date-viewfinder-box { aspect-ratio: 4 / 3; }
+#screen-add-product #date-label-preview { max-width: 100%; }
+#screen-add-product .form-grid-2 { grid-template-columns: minmax(0, 1fr); }
+
+@media (min-width: 520px) {
+  #screen-add-product .form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 360px) {
+  #screen-add-product .add-step-indicator { gap: 2px; }
+  #screen-add-product .add-step-indicator li { gap: 4px; font-size: 10px; }
+  #screen-add-product .add-step-indicator li > span:first-child { width: 21px; height: 21px; flex-basis: 21px; }
+}
+
 #screen-add-product .viewfinder-box {
   height: clamp(210px, 32vh, 340px);
   height: clamp(210px, 32svh, 340px);

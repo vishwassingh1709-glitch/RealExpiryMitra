@@ -330,226 +330,174 @@
           </button>
         </header>
 
-        <!-- TAB 1: Scan Barcode View -->
-        <div id="view-tab-scan" class="tab-view-content">
-          <!-- Viewfinder Camera Frame -->
-          <div class="viewfinder-box" id="scanner-viewfinder-box">
-            <video id="camera-video" class="viewfinder-video" autoplay playsinline webkit-playsinline muted style="display: none;"></video>
-            <div class="scanner-loading" id="scanner-loading" style="display: none;" role="status" aria-live="polite">
-              <span class="scanner-loading-spinner" aria-hidden="true"></span>
-              <span id="scanner-loading-text">Starting camera…</span>
-            </div>
-            
-            <div class="viewfinder-overlay" id="scanner-overlay">
-              <!-- Live scanner status badge inside viewfinder -->
-              <div class="scanner-live-badge" id="scanner-live-badge" style="display: none;">
-                <span class="scanner-pulse-dot"></span>
-                <span id="scanner-status-text">Scanning for barcode...</span>
-              </div>
+        <ol class="add-step-indicator" aria-label="Add product steps">
+          <li data-step-indicator="1" class="active"><span>1</span><span>Scan barcode</span></li>
+          <li data-step-indicator="2"><span>2</span><span>Capture date</span></li>
+          <li data-step-indicator="3"><span>3</span><span>Review &amp; save</span></li>
+        </ol>
 
-              <!-- Barcode detection pill overlay on viewfinder -->
-              <div class="scanned-pill-overlay" id="scanner-detected-pill" style="display: none;">
-                <span class="pill-check">&#10003;</span>
-                <span id="scanner-detected-code"></span>
+        <div id="view-tab-scan" class="tab-view-content add-product-flow">
+          <div id="add-step-scan" class="add-step-panel" data-add-step="1" aria-hidden="false">
+            <div class="viewfinder-box" id="scanner-viewfinder-box">
+              <video id="camera-video" class="viewfinder-video" autoplay playsinline webkit-playsinline muted></video>
+              <div class="scanner-loading" id="scanner-loading" role="status" aria-live="polite">
+                <span class="scanner-loading-spinner" aria-hidden="true"></span>
+                <span id="scanner-loading-text">Starting camera…</span>
               </div>
-
-              <div class="viewfinder-frame" id="scanner-frame">
-                <span class="corner top-left"></span>
-                <span class="corner top-right"></span>
-                <span class="corner bottom-left"></span>
-                <span class="corner bottom-right"></span>
-                <div class="scan-laser" id="scanner-laser" style="display: none;"></div>
+              <div class="viewfinder-overlay" id="scanner-overlay">
+                <div class="scanner-live-badge" id="scanner-live-badge">
+                  <span class="scanner-pulse-dot"></span>
+                  <span id="scanner-status-text">Starting scanner…</span>
+                </div>
+                <div class="scanned-pill-overlay" id="scanner-detected-pill" style="display: none;">
+                  <span class="pill-check">&#10003;</span>
+                  <span id="scanner-detected-code"></span>
+                </div>
+                <div class="viewfinder-frame" id="scanner-frame">
+                  <span class="corner top-left"></span><span class="corner top-right"></span>
+                  <span class="corner bottom-left"></span><span class="corner bottom-right"></span>
+                  <div class="scan-laser" id="scanner-laser"></div>
+                </div>
+                <span class="viewfinder-caption" id="scanner-caption">Align the barcode inside the frame</span>
               </div>
-              <span class="viewfinder-caption" id="scanner-caption">Align barcode inside the frame</span>
+              <div class="scanner-error-overlay" id="scanner-error-overlay" style="display: none;">
+                <div class="scanner-error-icon" aria-hidden="true">!</div>
+                <p class="scanner-error-msg" id="scanner-error-msg">Camera permission denied</p>
+                <button class="scanner-retry-btn" id="btn-scanner-retry" type="button">Try Again</button>
+              </div>
             </div>
-
-            <!-- Scanner Error / Permission Overlay -->
-            <div class="scanner-error-overlay" id="scanner-error-overlay" style="display: none;">
-              <div class="scanner-error-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-              </div>
-              <p class="scanner-error-msg" id="scanner-error-msg">Camera permission denied</p>
-              <button class="scanner-retry-btn" id="btn-scanner-retry" type="button">Try Again</button>
-            </div>
+            <p class="date-scan-help">The scanner uses the live rear camera. Allow camera access when your browser asks.</p>
+            <button class="btn-primary" id="btn-step1-next" type="button" hidden>Continue to date capture</button>
           </div>
 
-          <!-- Product Not Found Card -->
-          <div class="card not-found-card" id="card-product-not-found" style="display: none;">
-            <div class="not-found-header">
-              <div class="not-found-icon">&#128269;</div>
-              <div style="flex: 1;">
-                <div class="not-found-title">Product Not Found</div>
-                <p class="not-found-subtitle">No catalog item found for barcode <span id="not-found-barcode-display" class="barcode-highlight"></span></p>
+          <div id="add-step-date" class="add-step-panel" data-add-step="2" aria-hidden="true" style="display:none;">
+            <div class="viewfinder-box date-viewfinder-box" id="date-camera-box">
+              <video id="date-camera-video" class="viewfinder-video" autoplay playsinline webkit-playsinline muted></video>
+              <div class="scanner-loading" id="date-scanner-loading" role="status" aria-live="polite">
+                <span class="scanner-loading-spinner" aria-hidden="true"></span>
+                <span id="date-scanner-loading-text">Starting date-label camera…</span>
+              </div>
+              <div class="viewfinder-overlay">
+                <div class="scanner-live-badge" id="date-scanner-live-badge">
+                  <span class="scanner-pulse-dot"></span>
+                  <span id="date-scanner-status-text">Point at the printed date label…</span>
+                </div>
+                <div class="viewfinder-frame date-viewfinder-frame">
+                  <span class="corner top-left"></span><span class="corner top-right"></span>
+                  <span class="bottom-left corner"></span><span class="bottom-right corner"></span>
+                </div>
+                <span class="viewfinder-caption">Point the camera at the printed MFG / EXP / Best Before label</span>
+              </div>
+              <div class="scanner-error-overlay" id="date-scanner-error-overlay" style="display:none;">
+                <div class="scanner-error-icon" aria-hidden="true">!</div>
+                <p class="scanner-error-msg" id="date-scanner-error-msg">Camera unavailable</p>
+                <button class="scanner-retry-btn" id="btn-date-camera-retry" type="button">Try Again</button>
               </div>
             </div>
-            <div class="not-found-actions">
-              <button class="btn-text-green" id="btn-not-found-rescan" type="button" style="margin-top: 8px; justify-content: center; width: 100%;">
-                Scan Again
-              </button>
+            <p class="date-scan-help">Rotate the package until the printed date and batch area is clear. Hold steady, then capture one frame.</p>
+            <div class="date-scan-tools">
+              <input id="date-label-file-input" type="file" accept="image/*" capture="environment" hidden>
+              <button class="btn-primary" id="btn-scan-mfg-exp" type="button">Capture Date Label</button>
+              <div id="date-label-review" class="date-label-review" hidden>
+                <img id="date-label-preview" alt="Captured date-label photo preview">
+                <div class="date-label-actions">
+                  <button class="btn-secondary" id="btn-retake-date-label" type="button">Retake</button>
+                  <button class="btn-primary" id="btn-read-date-label" type="button">Continue</button>
+                </div>
+                <p id="date-label-status" role="status" aria-live="polite"></p>
+              </div>
             </div>
+            <button class="btn-text-green" id="btn-date-back-scan" type="button">&larr; Back to barcode</button>
           </div>
 
-          <!-- Product Found Card -->
-          <div class="product-found-card" id="card-product-found" style="display: none;">
-            <div class="product-found-title">Product Found</div>
-            <div class="product-found-row">
-              <div class="product-found-meta">
-                <img id="found-prod-img" class="found-product-image" alt="Product image from lookup source" hidden>
-                <div>
-                  <h3 id="found-prod-name" class="found-name"></h3>
-                  <p id="found-prod-variant" class="found-variant"></p>
-                  <p id="found-prod-source" class="found-variant"></p>
+          <div id="add-step-review" class="add-step-panel" data-add-step="3" aria-hidden="true" style="display:none;">
+            <div class="product-found-card" id="card-product-found" style="display:none;">
+              <div class="product-found-title">Product match</div>
+              <div class="product-found-row">
+                <div class="product-found-meta">
+                  <img id="found-prod-img" class="found-product-image" alt="Product image from lookup source" hidden>
+                  <div>
+                    <h3 id="found-prod-name" class="found-name"></h3>
+                    <p id="found-prod-variant" class="found-variant"></p>
+                    <p id="found-prod-source" class="found-variant"></p>
+                  </div>
                 </div>
               </div>
-              <button class="btn-text-green" id="btn-edit-found" type="button">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                </svg>
-                Edit
-              </button>
-            </div>
-            <div class="product-conflict" id="found-product-conflict" hidden>
-              <img id="found-conflict-photo" class="found-conflict-photo" alt="Scanned package photo" hidden>
-              <p id="found-product-conflict-text"></p>
-              <button class="btn-secondary" id="btn-use-catalog-match" type="button" hidden>Use catalogue details</button>
-              <button class="btn-secondary" id="btn-use-photo-match" type="button" hidden>Use photo suggestion</button>
-            </div>
-            <button class="btn-text-green" id="btn-found-rescan" type="button">Scan another product</button>
-          </div>
-
-          <!-- Form inputs below found product (2 column grid) -->
-          <div class="form-grid-2">
-            <div class="form-group-compact">
-              <label class="form-compact-label" for="add-product-barcode">Product No.</label>
-              <input type="text" id="add-product-barcode" class="input-field" placeholder="Barcode">
-            </div>
-            <div class="form-group-compact">
-              <label class="form-compact-label" for="add-product-mfg">Manufacturing date</label>
-              <input type="date" id="add-product-mfg" class="input-field">
-            </div>
-          </div>
-
-          <div class="form-grid-2">
-            <div class="form-group-compact">
-              <label class="form-compact-label">Quantity</label>
-              <div class="stepper-wrap">
-                <button type="button" class="stepper-btn" id="btn-add-qty-dec">&minus;</button>
-                <span class="stepper-value" id="add-qty-val">1</span>
-                <button type="button" class="stepper-btn" id="btn-add-qty-inc">&plus;</button>
+              <div class="product-conflict" id="found-product-conflict" hidden>
+                <img id="found-conflict-photo" class="found-conflict-photo" alt="Scanned package photo" hidden>
+                <p id="found-product-conflict-text"></p>
+                <button class="btn-secondary" id="btn-use-catalog-match" type="button" hidden>Use catalogue details</button>
+                <button class="btn-secondary" id="btn-use-photo-match" type="button" hidden>Use photo suggestion</button>
               </div>
             </div>
-            <div class="form-group-compact">
-              <label class="form-compact-label" for="add-product-expiry">Expiry Date</label>
-              <div class="date-input-wrap">
-                <input type="date" id="add-product-expiry" class="input-field">
-              </div>
+            <div class="card not-found-card" id="card-product-not-found" style="display:none;">
+              <div class="not-found-title">Product not identified</div>
+              <p class="not-found-subtitle" id="not-found-message">Your barcode is retained. Enter the product name below or continue with identified details.</p>
             </div>
             <div class="form-group-compact">
-              <label class="form-compact-label" for="add-product-batch">Batch / Lot No.</label>
-              <input type="text" id="add-product-batch" class="input-field" placeholder="Batch number">
+              <label class="form-compact-label" for="add-product-name">Product name *</label>
+              <input type="text" id="add-product-name" class="input-field" autocomplete="off" placeholder="Enter product name" required>
             </div>
-          </div>
-
-          <div class="form-group-compact">
-            <label class="form-compact-label" for="add-product-best-before">Best-before date (if printed)</label>
-            <input type="date" id="add-product-best-before" class="input-field">
-          </div>
-          <div class="form-group-compact">
-            <label class="form-compact-label" for="add-product-packaging">Packaging date (if printed)</label>
-            <input type="date" id="add-product-packaging" class="input-field">
-          </div>
-
-          <div class="date-scan-tools">
-            <input id="date-label-file-input" type="file" accept="image/*" capture="environment" hidden>
-            <p id="date-label-next-step" class="date-scan-help" hidden>Move the package so the printed MFG/EXP and batch area is visible inside the camera frame.</p>
-            <button class="btn-secondary" id="btn-scan-mfg-exp" type="button">Capture printed dates</button>
-            <p class="date-scan-help">Keep the live camera open, align the printed date and batch area in the frame, then capture one clear image. Review candidates before saving.</p>
-            <div id="date-label-review" class="date-label-review" hidden>
-              <img id="date-label-preview" alt="Date label photo for review">
-              <div class="date-label-actions">
-                <button class="btn-secondary" id="btn-retake-date-label" type="button">Retake / choose another</button>
-                <button class="btn-primary" id="btn-read-date-label" type="button">Read dates from photo</button>
-              </div>
-              <p id="date-label-status" role="status" aria-live="polite"></p>
-              <div id="date-candidate-list" class="date-candidate-list"></div>
-            </div>
-          </div>
-
-          <button class="btn-primary" id="btn-save-scanned-inventory" type="button">
-            Add to Inventory
-          </button>
-        </div>
-
-        <!-- Manual entry is shown after lookup sources return no usable product. -->
-        <div id="view-tab-manual" class="tab-view-content" style="display: none;">
-          <div id="manual-lookup-message" class="manual-lookup-message" hidden></div>
-          <button class="btn-text-green manual-scan-return" id="btn-manual-back-to-scan" type="button">&larr; Scan a barcode instead</button>
-          <form id="form-manual-entry" onsubmit="return false;">
-            <div class="form-group-compact">
-              <label class="form-compact-label" for="manual-name">Product Name *</label>
-              <input type="text" id="manual-name" class="input-field" placeholder="Enter product name" required>
-            </div>
-
             <div class="form-grid-2">
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-brand">Brand</label>
-                <input type="text" id="manual-brand" class="input-field" placeholder="Optional brand">
+                <label class="form-compact-label" for="add-product-brand">Brand</label>
+                <input type="text" id="add-product-brand" class="input-field" autocomplete="off" placeholder="If printed">
               </div>
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-category">Category</label>
-                <select id="manual-category" class="input-field select-field">
-                  <option value="Dairy">Dairy</option>
-                  <option value="Snacks">Snacks</option>
-                  <option value="Packaged Food">Packaged Food</option>
-                  <option value="Beverages">Beverages</option>
-                  <option value="Grains & Cereals">Grains & Cereals</option>
-                  <option value="Other">Other</option>
+                <label class="form-compact-label" for="add-product-category">Category</label>
+                <select id="add-product-category" class="input-field select-field">
+                  <option value="Dairy">Dairy</option><option value="Snacks">Snacks</option>
+                  <option value="Packaged Food">Packaged Food</option><option value="Beverages">Beverages</option>
+                  <option value="Grains &amp; Cereals">Grains &amp; Cereals</option><option value="Other">Other</option>
                 </select>
               </div>
             </div>
-
             <div class="form-grid-2">
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-barcode">Barcode *</label>
-                <input type="text" id="manual-barcode" class="input-field" placeholder="Enter barcode" required>
+                <label class="form-compact-label" for="add-product-barcode">Product / barcode number *</label>
+                <input type="text" id="add-product-barcode" class="input-field" placeholder="Decoded barcode" required>
               </div>
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-batch">Batch No.</label>
-                <input type="text" id="manual-batch" class="input-field" placeholder="B102">
+                <label class="form-compact-label" for="add-product-mfg">Manufacturing date</label>
+                <input type="date" id="add-product-mfg" class="input-field">
               </div>
             </div>
-
             <div class="form-grid-2">
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-mfg">MFG Date</label>
-                <input type="date" id="manual-mfg" class="input-field">
+                <label class="form-compact-label">Quantity</label>
+                <div class="stepper-wrap">
+                  <button type="button" class="stepper-btn" id="btn-add-qty-dec">&minus;</button>
+                  <span class="stepper-value" id="add-qty-val">1</span>
+                  <button type="button" class="stepper-btn" id="btn-add-qty-inc">&plus;</button>
+                </div>
               </div>
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-expiry">Expiry Date *</label>
-                <input type="date" id="manual-expiry" class="input-field" required>
+                <label class="form-compact-label" for="add-product-expiry">Expiry / use-by date</label>
+                <input type="date" id="add-product-expiry" class="input-field">
+              </div>
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="add-product-batch">Batch / lot number</label>
+                <input type="text" id="add-product-batch" class="input-field" placeholder="If readable">
               </div>
             </div>
-
             <div class="form-grid-2">
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-quantity">Quantity</label>
-                <input type="number" id="manual-quantity" class="input-field" value="1" min="1">
+                <label class="form-compact-label" for="add-product-best-before">Best-before date (if printed)</label>
+                <input type="date" id="add-product-best-before" class="input-field">
               </div>
               <div class="form-group-compact">
-                <label class="form-compact-label" for="manual-min-stock">Min Stock Alert</label>
-                <input type="number" id="manual-min-stock" class="input-field" value="5" min="1">
+                <label class="form-compact-label" for="add-product-packaging">Packaging date (if printed)</label>
+                <input type="date" id="add-product-packaging" class="input-field">
               </div>
             </div>
-
-            <button class="btn-primary" id="btn-save-manual-inventory" type="submit">
-              Save to Inventory
-            </button>
-          </form>
+            <p id="date-label-status-review" class="date-scan-help" role="status" aria-live="polite"></p>
+            <div id="date-candidate-list" class="date-candidate-list"></div>
+            <div class="date-label-actions">
+              <button class="btn-secondary" id="btn-review-back-date" type="button">Back to date capture</button>
+              <button class="btn-text-green" id="btn-found-rescan" type="button">Start another item</button>
+            </div>
+            <button class="btn-primary" id="btn-save-scanned-inventory" type="button">Save to Inventory</button>
+          </div>
         </div>
       </section>
 

@@ -7,6 +7,8 @@
 // Global Application State
 const state = {
   currentScreen: "screen-splash",
+  addProductStep: 1,
+  cameraMode: "barcode",
   previousScreens: [],
   user: {
     shopName: "",
@@ -83,7 +85,10 @@ function showScreen(screenId, pushHistory = true) {
 
   // Start the live scanner when Add Product is opened; the browser still
   // controls its normal camera permission prompt.
-  if (screenId === "screen-add-product" && previousScreen !== screenId) startCamera();
+  if (screenId === "screen-add-product" && previousScreen !== screenId) {
+    if (state.addProductStep === 2) showAddProductStep(2);
+    else if (!state.lastScannedBarcode) startCamera("barcode");
+  }
 
   // Toggle bottom navigation visibility
   const bottomNav = document.getElementById("bottom-nav");
@@ -145,6 +150,50 @@ function goBack() {
   } else {
     showScreen("screen-dashboard", false);
   }
+}
+
+function showAddProductStep(step) {
+  const nextStep = Math.max(1, Math.min(3, Number(step) || 1));
+  stopCamera();
+  state.addProductStep = nextStep;
+  document.querySelectorAll("#screen-add-product [data-add-step]").forEach((panel) => {
+    const active = Number(panel.dataset.addStep) === nextStep;
+    panel.style.display = active ? "block" : "none";
+    panel.setAttribute("aria-hidden", String(!active));
+  });
+  document.querySelectorAll("#screen-add-product [data-step-indicator]").forEach((item) => {
+    const index = Number(item.dataset.stepIndicator);
+    item.classList.toggle("active", index === nextStep);
+    item.classList.toggle("complete", index < nextStep);
+    item.setAttribute("aria-current", index === nextStep ? "step" : "false");
+  });
+
+  const nextFromScan = document.getElementById("btn-step1-next");
+  if (nextFromScan) nextFromScan.hidden = !state.lastScannedBarcode;
+  const captureButton = document.getElementById("btn-scan-mfg-exp");
+  if (captureButton) captureButton.hidden = Boolean(state.dateLabelImages?.original);
+  if (nextStep === 1) {
+    if (state.lastScannedBarcode) {
+      const pill = document.getElementById("scanner-detected-pill");
+      const code = document.getElementById("scanner-detected-code");
+      const status = document.getElementById("scanner-status-text");
+      if (code) code.textContent = state.lastScannedBarcode;
+      if (pill) pill.style.display = "flex";
+      if (status) status.textContent = "Barcode retained. Continue to capture the date label.";
+    } else startCamera("barcode");
+  } else if (nextStep === 2) {
+    const review = document.getElementById("date-label-review");
+    if (state.dateLabelImages?.original) {
+      if (review) review.hidden = false;
+    } else startCamera("date");
+  } else {
+    const status = document.getElementById("date-label-status-review");
+    const captureStatus = document.getElementById("date-label-status");
+    if (status && captureStatus?.textContent) status.textContent = captureStatus.textContent;
+  }
+
+  const viewport = document.getElementById("viewport");
+  if (viewport) viewport.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function apiFetch(input, options = {}) {
@@ -626,12 +675,13 @@ function getZxingReader() {
   return state.zxingReader;
 }
 
-function showScannerError(message) {
-  const errOverlay = document.getElementById("scanner-error-overlay");
-  const errMsg = document.getElementById("scanner-error-msg");
-  const liveBadge = document.getElementById("scanner-live-badge");
-  const laser = document.getElementById("scanner-laser");
-  const loading = document.getElementById("scanner-loading");
+function showScannerError(message, mode = state.cameraMode) {
+  const prefix = mode === "date" ? "date-scanner" : "scanner";
+  const errOverlay = document.getElementById(`${prefix}-error-overlay`);
+  const errMsg = document.getElementById(`${prefix}-error-msg`);
+  const liveBadge = document.getElementById(`${prefix}-live-badge`);
+  const laser = document.getElementById(`${prefix}-laser`);
+  const loading = document.getElementById(`${prefix}-loading`);
 
   if (errMsg) errMsg.textContent = message;
   if (errOverlay) errOverlay.style.display = "flex";
@@ -642,32 +692,30 @@ function showScannerError(message) {
   showToast(message, "error");
 }
 
-function hideScannerError() {
-  const errOverlay = document.getElementById("scanner-error-overlay");
+function hideScannerError(mode = state.cameraMode) {
+  const prefix = mode === "date" ? "date-scanner" : "scanner";
+  const errOverlay = document.getElementById(`${prefix}-error-overlay`);
   if (errOverlay) errOverlay.style.display = "none";
 }
 
-async function startCamera(facing = null) {
+async function startCamera(mode = "barcode", facing = null) {
+  state.cameraMode = mode === "date" ? "date" : "barcode";
+  const isDateCamera = state.cameraMode === "date";
+  const prefix = isDateCamera ? "date-scanner" : "scanner";
   const requestId = ++state.cameraRequestId;
   console.log("[SCANNER] Initializing camera");
-  hideScannerError();
+  hideScannerError(state.cameraMode);
 
-  const video = document.getElementById("camera-video");
-  const loading = document.getElementById("scanner-loading");
-  const loadingText = document.getElementById("scanner-loading-text");
-  const liveBadge = document.getElementById("scanner-live-badge");
-  const laser = document.getElementById("scanner-laser");
-  const statusText = document.getElementById("scanner-status-text");
-  const detectedPill = document.getElementById("scanner-detected-pill");
-  const notFoundCard = document.getElementById("card-product-not-found");
-  const foundCard = document.getElementById("card-product-found");
-  const startBtn = document.getElementById("btn-start-camera");
-  const stopBtn = document.getElementById("btn-stop-camera");
-  const flipBtn = document.getElementById("btn-flip-camera");
+  const video = document.getElementById(isDateCamera ? "date-camera-video" : "camera-video");
+  const loading = document.getElementById(`${prefix}-loading`);
+  const loadingText = document.getElementById(`${prefix}-loading-text`);
+  const liveBadge = document.getElementById(`${prefix}-live-badge`);
+  const laser = document.getElementById(`${prefix}-laser`);
+  const statusText = document.getElementById(`${prefix}-status-text`);
+  const detectedPill = isDateCamera ? null : document.getElementById("scanner-detected-pill");
 
   if (loading) loading.style.display = "flex";
   if (loadingText) loadingText.textContent = "Starting camera…";
-  if (foundCard) foundCard.style.display = "none";
 
   // Stop an earlier stream immediately, including when a camera switch fails.
   if (state.cameraStream) {
@@ -678,15 +726,13 @@ async function startCamera(facing = null) {
     try { state.zxingControls.stop(); } catch (_) {}
     state.zxingControls = null;
   }
-  if (video) {
-    video.srcObject = null;
-    video.style.display = "none";
-  }
+  [video, document.getElementById(isDateCamera ? "camera-video" : "date-camera-video")].forEach((node) => {
+    if (node) { node.srcObject = null; node.style.display = "none"; }
+  });
   state.isScanning = false;
 
   // Reset UI states
   if (detectedPill) detectedPill.style.display = "none";
-  if (notFoundCard) notFoundCard.style.display = "none";
 
   // Check secure context for camera access
   const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
@@ -701,7 +747,7 @@ async function startCamera(facing = null) {
   }
 
   // Determine facing mode
-  const targetFacing = facing || state.currentFacingMode || "environment";
+  const targetFacing = facing || "environment";
   state.currentFacingMode = targetFacing;
 
   let stream = null;
@@ -752,7 +798,7 @@ async function startCamera(facing = null) {
   }
 
   state.cameraStream = stream;
-  state.isScanning = true;
+  state.isScanning = !isDateCamera;
   state.isProcessingScan = false;
   console.log("[SCANNER] Camera started");
 
@@ -785,29 +831,14 @@ async function startCamera(facing = null) {
   if (loading) loading.style.display = "none";
   if (laser) laser.style.display = "block";
   if (liveBadge) liveBadge.style.display = "flex";
-  if (statusText) statusText.textContent = "Point camera at barcode...";
+  if (statusText) statusText.textContent = isDateCamera ? "Point at the printed date label…" : "Align the barcode inside the frame";
 
-  // Controls UI updates
-  if (startBtn) startBtn.style.display = "none";
-  if (stopBtn) stopBtn.style.display = "inline-flex";
-
-  // Check available cameras to show flip button if multiple exist
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter((d) => d.kind === "videoinput");
-    state.availableVideoDevices = videoDevices;
-    if (flipBtn) {
-      flipBtn.style.display = videoDevices.length > 1 ? "inline-flex" : "none";
-    }
-  } catch (_) {}
-
-  // Initialize and run barcode reader loop
-  startBarcodeDetectionLoop(requestId);
+  if (!isDateCamera) startBarcodeDetectionLoop(requestId);
 }
 
 function flipCamera() {
   const nextFacing = state.currentFacingMode === "environment" ? "user" : "environment";
-  startCamera(nextFacing);
+  startCamera(state.cameraMode, nextFacing);
 }
 
 async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
@@ -981,7 +1012,6 @@ function renderDateCandidates(result) {
         use.addEventListener("click", () => {
           document.getElementById(targetId).value = candidate.normalized_date;
           state.unconfirmedDateTypes.delete(candidate.date_type);
-          maybeAutoSaveConfirmedInventory(candidate);
         });
         card.append(use);
       }
@@ -1016,7 +1046,12 @@ function renderScanDateCandidates(expiry) {
     const targetId = ({ manufacturing_date: "res-mfg-date", packaging_date: "res-packaging-date", expiry_date: "res-expiry-date", best_before_date: "res-best-before-date" })[candidate.date_type];
     if (targetId && candidate.normalized_date && (candidate.precision === "day" || candidate.date_convention === "gs1_day_00_end_of_month")) {
       const choose = document.createElement("button"); choose.type = "button"; choose.className = "btn-secondary"; choose.textContent = `Use ${dateTypeLabel(candidate.date_type)}`;
-      choose.addEventListener("click", () => { document.getElementById(targetId).value = candidate.normalized_date; });
+      choose.addEventListener("click", () => {
+        document.getElementById(targetId).value = candidate.normalized_date;
+        if (candidate.date_type === "expiry_date" || candidate.date_type === "best_before_date") {
+          state.unconfirmedDateTypes.delete(candidate.date_type);
+        }
+      });
       card.append(choose);
     }
     container.append(card);
@@ -1032,7 +1067,7 @@ async function selectDateLabelPhoto(file) {
   const review = document.getElementById("date-label-review");
   const candidates = document.getElementById("date-candidate-list");
   const readButton = document.getElementById("btn-read-date-label");
-  if (readButton) { readButton.disabled = false; readButton.textContent = "Read dates from photo"; }
+  if (readButton) { readButton.disabled = true; readButton.textContent = "Continue"; }
   state.dateLabelImages = null;
   state.dateLabelImage = null;
   state.dateExtraction = null;
@@ -1041,6 +1076,7 @@ async function selectDateLabelPhoto(file) {
   if (preview) preview.removeAttribute("src");
   if (file.size > 12 * 1024 * 1024) {
     if (status) status.textContent = "This photo is too large. Choose or retake a close-up under 12 MB.";
+    if (readButton) readButton.disabled = true;
     return;
   }
   if (status) status.textContent = "Preparing photo…";
@@ -1053,18 +1089,22 @@ async function selectDateLabelPhoto(file) {
     const preview = document.getElementById("date-label-preview");
     if (preview) preview.src = state.dateLabelImage;
     if (review) review.hidden = false;
-    if (status) status.textContent = "Check that the printed date and batch text are readable, then choose Read dates.";
+    if (readButton) readButton.disabled = false;
+    const captureButton = document.getElementById("btn-scan-mfg-exp");
+    if (captureButton) captureButton.hidden = true;
+    if (status) status.textContent = "Photo ready. Continue to read the printed dates.";
     state.dateExtraction = null;
     return true;
   } catch (error) {
     if (requestId !== state.dateExtractionRequestId) return;
     if (status) status.textContent = error.message || "Photo could not be prepared. Please try another image.";
+    if (readButton) readButton.disabled = true;
     return false;
   }
 }
 
 async function captureDateLabelFromLiveCamera() {
-  const video = document.getElementById("camera-video");
+  const video = document.getElementById("date-camera-video");
   if (!state.cameraStream || !video?.videoWidth || !video?.videoHeight) {
     document.getElementById("date-label-file-input")?.click();
     return;
@@ -1078,7 +1118,8 @@ async function captureDateLabelFromLiveCamera() {
     if (status) status.textContent = "Could not capture this frame. Reposition the package and try again.";
     return;
   }
-  await processDateLabelImage(image, true);
+  await processDateLabelImage(image, false);
+  stopCamera();
 }
 
 async function processDateLabelImage(dataUrl, readImmediately = false) {
@@ -1099,6 +1140,11 @@ async function readDateLabelPhoto() {
   state.dateExtractionController?.abort();
   const controller = new AbortController();
   state.dateExtractionController = controller;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 45000);
   const button = document.getElementById("btn-read-date-label");
   const status = document.getElementById("date-label-status");
   if (button) { button.disabled = true; button.textContent = "Reading label…"; }
@@ -1118,18 +1164,22 @@ async function readDateLabelPhoto() {
     if (requestId !== state.dateExtractionRequestId) return;
     if (!response.ok) throw new Error(result.message || "Date extraction failed.");
     state.dateExtraction = result;
-    renderDateCandidates(result);
+    renderScanDateCandidates(result);
     const filledCount = populateReadableDateCandidates(result);
     if (status) status.textContent = `${result.message || "Review the candidates before saving."}${filledCount ? " Clear OCR readings were filled in; confirm expiry or best-before before saving." : ""}`;
-    if (!result.candidates?.length) showToast(result.message, "info");
+    if (!result.candidates?.length) showToast(result.message || "No readable date was found. Enter it manually.", "info");
     else showToast("Date candidates are ready for your review.", "info");
   } catch (error) {
-    if (requestId !== state.dateExtractionRequestId || error.name === "AbortError") return;
-    if (status) status.textContent = "We couldn't read the printed date clearly. Please retake the photo or enter the date manually.";
-    showToast(error.message || "Date reading failed. Enter dates manually.", "error");
+    if (requestId !== state.dateExtractionRequestId || (error.name === "AbortError" && !timedOut)) return;
+    if (status) status.textContent = timedOut
+      ? "Date reading took too long. You can retake the photo or enter the date manually."
+      : "We couldn't read the printed date clearly. Please retake the photo or enter the date manually.";
+    showToast(timedOut ? "Date reading timed out. Enter dates manually or retake the photo." : (error.message || "Date reading failed. Enter dates manually."), "error");
   } finally {
-    if (requestId === state.dateExtractionRequestId && button) { button.disabled = false; button.textContent = "Read dates from photo"; }
+    clearTimeout(timeout);
+    if (requestId === state.dateExtractionRequestId && button) { button.disabled = false; button.textContent = "Continue"; }
     if (state.dateExtractionController === controller) state.dateExtractionController = null;
+    if (requestId === state.dateExtractionRequestId && state.currentScreen === "screen-add-product") showAddProductStep(3);
   }
 }
 
@@ -1165,46 +1215,22 @@ function populateReadableDateCandidates(result) {
   return filledCount;
 }
 
-function maybeAutoSaveConfirmedInventory(candidate) {
-  const product = state.currentLookupProduct;
-  if (!product || product.verification_status !== "confirmed" || !["catalog", "inventory"].includes(product.source)) return;
-  if (document.getElementById("found-prod-name")?.textContent?.trim() !== product.name) return;
-  if (document.getElementById("add-product-barcode")?.value?.trim() !== product.barcode) return;
-  if (!["ocr", "paddleocr", "tesseract", "ocr_space"].includes(candidate.source) || candidate.precision !== "day" || candidate.uncertain || candidate.conflict || candidate.derived) return;
-  if (!["expiry_date", "best_before_date"].includes(candidate.date_type)) return;
-  if (state.unconfirmedDateTypes.size || state.pendingProductConflict) return;
-  if (!Number.isInteger(state.addQuantity) || state.addQuantity < 1) return;
-  const hasConfirmedBatchDate = Boolean(document.getElementById("add-product-expiry")?.value || document.getElementById("add-product-best-before")?.value);
-  if (hasConfirmedBatchDate) document.getElementById("btn-save-scanned-inventory")?.click();
-}
-
 function showManualEntryForBarcode(barcode, message) {
-  stopCamera();
   state.currentLookupProduct = null;
   state.pendingProductConflict = null;
   state.currentLookupPhoto = null;
-  const scannerView = document.getElementById("view-tab-scan");
-  const manualView = document.getElementById("view-tab-manual");
+  state.lastScannedBarcode = barcode;
+  document.getElementById("add-product-barcode").value = barcode;
+  document.getElementById("add-product-name").value = "";
+  document.getElementById("add-product-brand").value = "";
+  document.getElementById("add-product-category").value = "Other";
+  document.getElementById("found-prod-name").textContent = "";
   const foundCard = document.getElementById("card-product-found");
   const notFoundCard = document.getElementById("card-product-not-found");
-  if (scannerView) scannerView.style.display = "none";
-  if (manualView) manualView.style.display = "block";
   if (foundCard) foundCard.style.display = "none";
-  if (notFoundCard) notFoundCard.style.display = "none";
-  const info = document.getElementById("manual-lookup-message");
-  if (info) {
-    info.textContent = message;
-    info.hidden = false;
-  }
-  document.getElementById("manual-barcode").value = barcode;
-  document.getElementById("manual-name").value = "";
-  document.getElementById("manual-brand").value = "";
-  document.getElementById("manual-category").value = "Other";
-  document.getElementById("manual-batch").value = "";
-  document.getElementById("manual-mfg").value = "";
-  document.getElementById("manual-expiry").value = "";
-  document.getElementById("manual-quantity").value = "1";
-  document.getElementById("manual-name").focus();
+  if (notFoundCard) notFoundCard.style.display = "block";
+  const info = document.getElementById("not-found-message");
+  if (info) info.textContent = `${message} Your barcode is retained; enter the product name in review.`;
 }
 
 function showScannerEntryView() {
@@ -1220,12 +1246,9 @@ function showScannerEntryView() {
   state.isProcessingScan = false;
   state.lastScannedBarcode = null;
   state.lastScanTimestamp = 0;
+  state.addProductStep = 1;
   const scannerView = document.getElementById("view-tab-scan");
-  const manualView = document.getElementById("view-tab-manual");
   if (scannerView) scannerView.style.display = "block";
-  if (manualView) manualView.style.display = "none";
-  const message = document.getElementById("manual-lookup-message");
-  if (message) message.hidden = true;
   const foundCard = document.getElementById("card-product-found");
   const notFoundCard = document.getElementById("card-product-not-found");
   const conflict = document.getElementById("found-product-conflict");
@@ -1243,21 +1266,37 @@ function showScannerEntryView() {
   if (loading) loading.style.display = "none";
   if (detectedPill) detectedPill.style.display = "none";
   document.getElementById("add-product-barcode").value = "";
+  document.getElementById("add-product-name").value = "";
+  document.getElementById("add-product-brand").value = "";
+  document.getElementById("add-product-category").value = "Other";
   document.getElementById("add-product-batch").value = "";
   document.getElementById("add-product-mfg").value = "";
   document.getElementById("add-product-packaging").value = "";
   document.getElementById("add-product-expiry").value = "";
   document.getElementById("add-product-best-before").value = "";
   state.unconfirmedDateTypes.clear();
-  const dateNextStep = document.getElementById("date-label-next-step");
-  if (dateNextStep) dateNextStep.hidden = true;
   state.dateLabelImage = null;
   state.dateLabelImages = null;
   state.dateExtraction = null;
+  state.addQuantity = 1;
+  document.getElementById("add-qty-val").textContent = "1";
   document.getElementById("date-label-review").hidden = true;
+  document.getElementById("btn-step1-next").hidden = true;
+  document.querySelectorAll("#screen-add-product [data-add-step]").forEach((panel) => {
+    const active = panel.dataset.addStep === "1";
+    panel.style.display = active ? "block" : "none";
+    panel.setAttribute("aria-hidden", String(!active));
+  });
+  document.querySelectorAll("#screen-add-product [data-step-indicator]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.stepIndicator === "1");
+    item.classList.remove("complete");
+  });
   document.getElementById("found-prod-name").textContent = "";
   document.getElementById("found-prod-variant").textContent = "";
   document.getElementById("found-prod-source").textContent = "";
+  const reviewStatus = document.getElementById("date-label-status-review");
+  if (reviewStatus) reviewStatus.textContent = "";
+  document.getElementById("date-candidate-list").replaceChildren();
   const productImage = document.getElementById("found-prod-img");
   if (productImage) { productImage.removeAttribute("src"); productImage.hidden = true; }
 }
@@ -1316,16 +1355,9 @@ async function handleDetectedBarcode(barcode, packagePhoto = null) {
 }
 
 function renderIdentifiedProduct(product) {
-  state.dateExtractionRequestId += 1;
-  state.dateExtractionController?.abort();
-  state.dateExtractionController = null;
   state.currentLookupProduct = product;
   const foundCard = document.getElementById("card-product-found");
   const notFoundCard = document.getElementById("card-product-not-found");
-  const scannerView = document.getElementById("view-tab-scan");
-  const manualView = document.getElementById("view-tab-manual");
-  if (scannerView) scannerView.style.display = "block";
-  if (manualView) manualView.style.display = "none";
   if (notFoundCard) notFoundCard.style.display = "none";
   if (foundCard) foundCard.style.display = "block";
   const conflictPanel = document.getElementById("found-product-conflict");
@@ -1335,26 +1367,10 @@ function renderIdentifiedProduct(product) {
   document.getElementById("found-prod-name").textContent = product.name || "";
   document.getElementById("found-prod-variant").textContent = [product.brand, product.category].filter(Boolean).join(" • ");
   document.getElementById("add-product-barcode").value = product.barcode || state.lastScannedBarcode || "";
-  document.getElementById("add-product-batch").value = "";
-  document.getElementById("add-product-mfg").value = "";
-  document.getElementById("add-product-packaging").value = "";
-  document.getElementById("add-product-expiry").value = "";
-  document.getElementById("add-product-best-before").value = "";
-  state.unconfirmedDateTypes.clear();
-  state.dateLabelImage = null;
-  state.dateLabelImages = null;
-  state.dateExtraction = null;
-  const dateReview = document.getElementById("date-label-review");
-  if (dateReview) dateReview.hidden = true;
-  const nextStep = document.getElementById("date-label-next-step");
-  if (nextStep) {
-    nextStep.hidden = false;
-    nextStep.textContent = "Next: align the printed MFG/EXP and batch area with the camera, capture one frame, then confirm every expiry candidate.";
-  }
-  const caption = document.getElementById("scanner-caption");
-  if (caption) caption.textContent = "Align the printed date or batch area inside the frame";
-  document.getElementById("add-qty-val").textContent = "1";
-  state.addQuantity = 1;
+  document.getElementById("add-product-name").value = product.name || "";
+  document.getElementById("add-product-brand").value = product.brand || "";
+  const category = document.getElementById("add-product-category");
+  if (category) category.value = [...category.options].some((option) => option.value === product.category) ? product.category : "Other";
   const sourceText = document.getElementById("found-prod-source");
   if (sourceText) {
     const unverified = product.verification_status === "unverified";
@@ -1384,6 +1400,11 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
   const foundCard = document.getElementById("card-product-found");
   const statusText = document.getElementById("scanner-status-text");
   const loading = document.getElementById("scanner-loading");
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    requestController.abort();
+  }, 15000);
   try {
     const res = await apiFetch("/api/products/identify", {
       method: "POST",
@@ -1399,7 +1420,6 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
       if (statusText) statusText.textContent = "✓ Product identified";
       renderIdentifiedProduct(data.product);
       showToast(`Product suggestion: ${data.product.name}`, "success");
-      if (packagePhoto) void processDateLabelImage(packagePhoto, true);
     } else if (res.ok && data.status === "conflict" && data.product && data.candidate) {
       state.currentLookupProduct = null;
       state.pendingProductConflict = data;
@@ -1424,10 +1444,11 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
       }
       document.getElementById("btn-use-photo-match").hidden = false;
       if (statusText) statusText.textContent = "Product details need review";
-      if (packagePhoto) void processDateLabelImage(packagePhoto, true);
     } else {
       const message = res.status === 503 || data.status === "unavailable"
         ? "Product services are unavailable. Enter the product details manually."
+        : res.status === 504
+          ? "Product lookup timed out. Enter the product details manually."
         : data.status === "invalid"
           ? "This barcode failed validation. Correct it below or enter the product details manually."
           : "No source could identify this product. Enter its details manually.";
@@ -1436,17 +1457,19 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
       showToast("Product details were not identified. Manual entry is ready.", "info");
     }
   } catch (err) {
-    if (requestId !== state.identificationRequestId || err.name === "AbortError") return;
+    if (requestId !== state.identificationRequestId || (err.name === "AbortError" && !timedOut)) return;
     console.error("[SCANNER] Barcode lookup error:", err);
     state.currentLookupProduct = null;
     if (statusText) statusText.textContent = "Manual product details needed";
-    showManualEntryForBarcode(barcode, "Product services are unavailable. Enter the product details manually.");
-    showToast("Product lookup is unavailable. Manual entry is ready.", "error");
+    showManualEntryForBarcode(barcode, timedOut ? "Product lookup timed out." : "Product services are unavailable.");
+    showToast(timedOut ? "Product lookup timed out. Continue with the date photo and enter product details manually." : "Product lookup is unavailable. Continue with the date photo and enter product details manually.", "error");
   } finally {
+    clearTimeout(timeout);
     if (requestId === state.identificationRequestId) {
       if (loading) loading.style.display = "none";
       state.isProcessingScan = false;
       if (state.identificationController === requestController) state.identificationController = null;
+      if (state.currentScreen === "screen-add-product" && state.lastScannedBarcode === barcode) showAddProductStep(2);
     }
   }
 }
@@ -1467,29 +1490,19 @@ function stopCamera() {
     state.cameraStream = null;
   }
 
-  const video = document.getElementById("camera-video");
-  if (video) {
-    video.srcObject = null;
-    video.style.display = "none";
-  }
+  ["camera-video", "date-camera-video"].forEach((id) => {
+    const video = document.getElementById(id);
+    if (video) { video.srcObject = null; video.style.display = "none"; }
+  });
 
-  const loading = document.getElementById("scanner-loading");
-  const liveBadge = document.getElementById("scanner-live-badge");
-  const laser = document.getElementById("scanner-laser");
+  ["scanner", "date-scanner"].forEach((prefix) => {
+    ["loading", "live-badge", "laser", "error-overlay"].forEach((suffix) => {
+      const element = document.getElementById(`${prefix}-${suffix}`);
+      if (element) element.style.display = "none";
+    });
+  });
   const detectedPill = document.getElementById("scanner-detected-pill");
-  const startBtn = document.getElementById("btn-start-camera");
-  const stopBtn = document.getElementById("btn-stop-camera");
-  const flipBtn = document.getElementById("btn-flip-camera");
-
-  if (loading) loading.style.display = "none";
-  if (liveBadge) liveBadge.style.display = "none";
-  if (laser) laser.style.display = "none";
   if (detectedPill) detectedPill.style.display = "none";
-  hideScannerError();
-
-  if (startBtn) startBtn.style.display = "inline-flex";
-  if (stopBtn) stopBtn.style.display = "none";
-  if (flipBtn) flipBtn.style.display = "none";
 
   state.isScanning = false;
   state.isProcessingScan = false;
@@ -1869,7 +1882,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const alreadyOnAddProduct = state.currentScreen === "screen-add-product";
     showScannerEntryView();
     showScreen("screen-add-product");
-    if (alreadyOnAddProduct) startCamera();
+    if (alreadyOnAddProduct) startCamera("barcode");
   });
 
   // Dashboard Header shortcuts
@@ -1945,31 +1958,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-sales-back")?.addEventListener("click", goBack);
 
   // Camera starts automatically on entry; retry is only shown after failure.
-  document.getElementById("btn-scanner-retry")?.addEventListener("click", () => startCamera());
-
-  // Manual entry appears automatically when sources cannot identify a product.
-  document.getElementById("btn-manual-back-to-scan")?.addEventListener("click", () => {
+  document.getElementById("btn-scanner-retry")?.addEventListener("click", () => startCamera("barcode"));
+  document.getElementById("btn-date-camera-retry")?.addEventListener("click", () => startCamera("date"));
+  document.getElementById("btn-step1-next")?.addEventListener("click", () => showAddProductStep(2));
+  document.getElementById("btn-date-back-scan")?.addEventListener("click", () => showAddProductStep(1));
+  document.getElementById("btn-review-back-date")?.addEventListener("click", () => showAddProductStep(2));
+  const beginAnotherItem = () => {
     showScannerEntryView();
-    state.currentLookupPhoto = null;
-    startCamera();
-  });
-  document.getElementById("btn-not-found-rescan")?.addEventListener("click", () => {
-    const notFoundCard = document.getElementById("card-product-not-found");
-    if (notFoundCard) notFoundCard.style.display = "none";
-    state.lastScannedBarcode = null;
-    state.lastScanTimestamp = 0;
-    startCamera();
-  });
-  document.getElementById("btn-found-rescan")?.addEventListener("click", () => {
-    const foundCard = document.getElementById("card-product-found");
-    if (foundCard) foundCard.style.display = "none";
-    state.currentLookupProduct = null;
-    state.pendingProductConflict = null;
-    state.currentLookupPhoto = null;
-    state.lastScannedBarcode = null;
-    state.lastScanTimestamp = 0;
-    startCamera();
-  });
+    if (state.currentScreen === "screen-add-product") startCamera("barcode");
+  };
+  document.getElementById("btn-found-rescan")?.addEventListener("click", beginAnotherItem);
+  document.getElementById("btn-not-found-rescan")?.addEventListener("click", beginAnotherItem);
   const chooseConflictProduct = (key) => {
     const choice = state.pendingProductConflict?.[key];
     if (!choice) return;
@@ -1984,12 +1983,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-scan-mfg-exp")?.addEventListener("click", captureDateLabelFromLiveCamera);
   document.getElementById("btn-retake-date-label")?.addEventListener("click", () => {
-    if (state.cameraStream) captureDateLabelFromLiveCamera();
-    else document.getElementById("date-label-file-input")?.click();
+    state.dateExtractionRequestId += 1;
+    state.dateExtractionController?.abort();
+    state.dateExtractionController = null;
+    state.dateLabelImages = null;
+    state.dateLabelImage = null;
+    state.dateExtraction = null;
+    state.unconfirmedDateTypes.clear();
+    const preview = document.getElementById("date-label-preview");
+    if (preview) preview.removeAttribute("src");
+    const review = document.getElementById("date-label-review");
+    if (review) review.hidden = true;
+    const captureButton = document.getElementById("btn-scan-mfg-exp");
+    if (captureButton) captureButton.hidden = false;
+    startCamera("date");
   });
   document.getElementById("date-label-file-input")?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
-    if (file) selectDateLabelPhoto(file);
+    if (file) {
+      stopCamera();
+      void selectDateLabelPhoto(file);
+    }
     event.target.value = "";
   });
   ["add-product-expiry", "add-product-best-before"].forEach((id) => {
@@ -1999,14 +2013,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
   document.getElementById("btn-read-date-label")?.addEventListener("click", readDateLabelPhoto);
-
-  // Edit Found button in Add Product screen
-  document.getElementById("btn-edit-found")?.addEventListener("click", () => {
-    const name = prompt("Enter product name:", document.getElementById("found-prod-name").textContent);
-    if (name) {
-      document.getElementById("found-prod-name").textContent = name.trim();
-    }
-  });
 
   // Add Product Quantity Stepper
   document.getElementById("btn-add-qty-dec")?.addEventListener("click", () => {
@@ -2030,7 +2036,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const bestBefore = document.getElementById("add-product-best-before").value.trim();
     const mfg = document.getElementById("add-product-mfg").value.trim();
     const packaging = document.getElementById("add-product-packaging").value.trim();
-    const name = document.getElementById("found-prod-name").textContent.trim();
+    const name = document.getElementById("add-product-name").value.trim();
+    const brand = document.getElementById("add-product-brand").value.trim();
+    const category = document.getElementById("add-product-category").value;
     const qty = state.addQuantity;
 
     if (!barcode || !name || (!expiry && !bestBefore)) {
@@ -2044,8 +2052,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("date-label-review")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    if (!state.currentLookupProduct) {
-      showToast("Choose which product details match the package before saving.", "error");
+    if (state.pendingProductConflict) {
+      showToast("Choose the product details that match the package before saving.", "error");
       return;
     }
 
@@ -2073,15 +2081,18 @@ document.addEventListener("DOMContentLoaded", () => {
           } : null,
           quantity: qty,
           source: "barcode",
-          brand: state.currentLookupProduct?.brand || "",
-          category: state.currentLookupProduct?.category || "Other",
+          brand,
+          category,
           image_url: state.currentLookupProduct?.image_url || null,
           product_source: state.currentLookupProduct?.source || "manual",
-          product_source_label: state.currentLookupProduct?.source_label || "Shopkeeper confirmed"
+          product_source_label: state.currentLookupProduct?.source_label || "Shopkeeper entered or confirmed"
         })
       });
 
-      if (!res.ok) throw new Error("Failed to save inventory");
+      if (!res.ok) {
+        const failure = await res.json().catch(() => ({}));
+        throw new Error(failure.message || failure.error || "Inventory could not be saved. Check the required fields and try again.");
+      }
       showToast(`Added ${name} to inventory!`, "success");
       state.currentLookupProduct = null;
       showScreen("screen-inventory");
@@ -2089,44 +2100,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast(`Error: ${err.message}`, "error");
     } finally {
       state.isSavingScannedInventory = false;
-      if (saveButton) { saveButton.disabled = false; saveButton.textContent = "Add to Inventory"; }
-    }
-  });
-
-  // Manual Form Submit
-  document.getElementById("form-manual-entry")?.addEventListener("submit", async () => {
-    const name = document.getElementById("manual-name").value.trim();
-    const brand = document.getElementById("manual-brand").value.trim();
-    const category = document.getElementById("manual-category").value;
-    const barcode = document.getElementById("manual-barcode").value.trim();
-    const batch = document.getElementById("manual-batch").value.trim();
-    const mfg = document.getElementById("manual-mfg").value;
-    const expiry = document.getElementById("manual-expiry").value;
-    const quantity = Number(document.getElementById("manual-quantity").value) || 1;
-    const minStock = Number(document.getElementById("manual-min-stock").value) || 5;
-
-    try {
-      const res = await apiFetch("/api/inventory/manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_name: name,
-          brand,
-          category,
-          barcode,
-          batch,
-          mfg_date: mfg || null,
-          expiry_date: expiry,
-          quantity,
-          min_threshold: minStock
-        })
-      });
-
-      if (!res.ok) throw new Error("Failed to create inventory item");
-      showToast(`Saved ${name} successfully`, "success");
-      showScreen("screen-inventory");
-    } catch (err) {
-      showToast(`Error: ${err.message}`, "error");
+      if (saveButton) { saveButton.disabled = false; saveButton.textContent = "Save to Inventory"; }
     }
   });
 
