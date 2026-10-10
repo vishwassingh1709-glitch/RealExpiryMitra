@@ -2620,3 +2620,238 @@ body {
   border-radius: 4px;
 }
 
+/* --------------------------------------------------------------------------
+   ExpiryMitra application refresh — shared tokens and responsive shell
+   -------------------------------------------------------------------------- */
+:root {
+  --primary: #FF5A0A;
+  --primary-hover: #E84F08;
+  --primary-light: #FFF2E9;
+  --primary-subtle: #FFF7F0;
+  --primary-glow: rgba(255, 90, 10, 0.16);
+  --navy: #102B46;
+  --navy-soft: #243B53;
+  --navy-muted: #64748B;
+  --navy-light: #8998A8;
+  --navy-subtle: #D7DFE6;
+  --bg-cream: #FAF7F0;
+  --bg-cream-dark: #F1ECE3;
+  --card-bg: #FFFFFF;
+  --card-border: #E7E2D9;
+  --card-border-light: #F1EDE6;
+  --green-safe: #16805D;
+  --green-bg: #E8F4ED;
+  --green-text: #176B4D;
+  --orange-soon: #B96A08;
+  --orange-bg: #FFF2D9;
+  --orange-text: #8C5000;
+  --red-expired: #C53B3B;
+  --red-bg: #FCE9E7;
+  --red-text: #A72C2C;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-subtle: 0 1px 3px rgba(16, 43, 70, 0.045);
+  --shadow-card: 0 1px 4px rgba(16, 43, 70, 0.055);
+  --shadow-lift: 0 5px 14px rgba(16, 43, 70, 0.09);
+  --shadow-primary: 0 2px 5px rgba(179, 61, 7, 0.16);
+  --bottom-nav-height: 72px;
+}
+
+html { scroll-behavior: smooth; }
+body, button, input, select, textarea { font-family: var(--font-family); }
+body { background: var(--bg-cream); color: #172536; line-height: 1.5; }
+button, input, select, textarea { font-size: 1rem; }
+button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+[role="button"]:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid rgba(255, 90, 10, 0.55);
+  outline-offset: 2px;
+}
+
+.app-container {
+  max-width: 100%;
+  min-height: 100dvh;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg-cream);
+}
+.screen-viewport { scroll-behavior: smooth; }
+.screen { padding: 20px 18px 28px; gap: 0; }
+.screen-title { font-size: clamp(1.65rem, 3vw, 2rem); font-weight: 750; letter-spacing: -0.035em; line-height: 1.2; }
+.screen-header { margin-bottom: 22px; min-height: 48px; }
+.section-title, .modal-title { font-size: 1.25rem; line-height: 1.35; letter-spacing: -0.02em; }
+.greeting-title { font-size: clamp(1.5rem, 3vw, 1.85rem); letter-spacing: -0.035em; }
+.store-name-sub, .product-meta, .sales-metric-lbl { font-size: 0.9rem; }
+.product-name { font-size: 1rem; letter-spacing: 0; }
+.btn-primary, .btn-secondary {
+  min-height: 48px;
+  height: auto;
+  border-radius: 9px;
+  font-size: 1rem;
+  font-weight: 650;
+  box-shadow: var(--shadow-primary);
+}
+.btn-secondary { box-shadow: none; }
+.btn-primary:hover { box-shadow: 0 3px 9px rgba(179, 61, 7, 0.2); }
+.input-field { min-height: 48px; height: auto; font-size: 1rem; border-radius: 9px; border-color: #D7DDE2; color: #172536; }
+.form-compact-label { color: #42566B; font-size: 0.9rem; font-weight: 650; line-height: 1.4; }
+.input-label-mini { font-size: 0.75rem; line-height: 1.3; }
+.input-with-icon .input-field { min-height: 30px; height: 30px; font-size: 1rem; }
+.form-group-compact { gap: 6px; margin-bottom: 16px; }
+.product-item, .stat-card, .menu-list-card, .sales-metric-card, .date-label-review,
+.found-product-card, .product-hero-card, .sale-product-card {
+  border-color: var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.product-item { padding: 14px 16px; min-height: 76px; }
+.product-meta { line-height: 1.45; white-space: normal; }
+.stat-card { padding: 18px; min-height: 106px; }
+.stat-number { font-size: 1.8rem; }
+.stat-label { font-size: 0.9rem; color: #53677A; }
+.menu-item { min-height: 56px; font-size: 0.97rem; }
+.store-title { font-size: 1.15rem; }
+.search-input, .filter-pill, .tab-btn, .auth-mode-btn { font-size: 0.95rem; }
+.filter-pill { min-height: 42px; }
+.toast { font-size: 0.95rem; padding: 12px 16px; }
+.modal-content { border-radius: 16px 16px 0 0; max-width: 560px; }
+.modal-close-btn { width: 44px; height: 44px; }
+
+/* Welcome: compact vertical rhythm, fitting typical phone heights. */
+#screen-splash { padding: 14px 20px max(16px, env(safe-area-inset-bottom, 16px)); }
+.splash-content { width: min(100%, 680px); margin-inline: auto; gap: clamp(8px, 1.8vh, 18px); }
+.splash-logo-wrap { width: min(100%, 185px); }
+.splash-carousel { max-width: 520px; }
+.splash-hero-box { width: min(100%, 34vh, 250px); height: min(34vh, 250px); }
+.splash-blob-bg { opacity: 0.35; }
+.splash-text-group { width: min(100%, 440px); }
+.splash-text-group h1, .splash-text-group h2 { font-size: clamp(1.35rem, 4vw, 1.7rem); line-height: 1.25; }
+.splash-text-group p { margin-top: 8px; font-size: 1rem; line-height: 1.5; }
+.splash-slide-arrow { width: 42px; height: 42px; box-shadow: none; }
+.splash-dot { width: 12px; height: 12px; }
+.splash-action { width: min(100%, 420px); }
+
+/* Sign in / account creation: one compact, centered surface on wide screens. */
+#screen-auth { justify-content: center; align-items: center; padding: 24px 18px; }
+.auth-wrapper {
+  width: min(100%, 460px);
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: #FFFFFF;
+  box-shadow: 0 5px 20px rgba(16, 43, 70, 0.06);
+}
+.auth-logo-header { margin: 0 0 22px; }
+.auth-brand-logo { width: min(100%, 160px); margin-bottom: 16px; }
+.auth-logo-header h1 { font-size: 1.65rem; font-weight: 720; letter-spacing: -0.03em; }
+.auth-logo-header p { font-size: 1rem; color: #53677A; }
+.auth-mode-toggle { border-radius: 9px; background: #F2F0EC; box-shadow: none; }
+.auth-mode-btn { min-height: 44px; border-radius: 7px; }
+.auth-mode-btn.active { background: var(--navy); box-shadow: none; }
+.input-with-icon { min-height: 56px; border-radius: 9px; box-shadow: none; }
+.auth-feedback { min-height: 22px; font-size: 0.9rem; line-height: 1.4; }
+.auth-switch-text { font-size: 0.9rem; }
+.auth-leaf-decor { display: none; }
+
+/* Dashboard and day-to-day surfaces. */
+.grocery-banner { background: #FFF9F1; border-color: #EBDCC9; border-radius: 12px; box-shadow: none; padding: 16px 18px; }
+.grocery-banner-text { max-width: 300px; font-size: 1rem; line-height: 1.5; }
+.grocery-banner-img-wrap { width: 104px; height: 68px; }
+.dash-brand-logo { width: min(100%, 150px); max-height: none; height: auto; }
+.section-header { margin: 26px 0 12px; }
+.product-cards-list { gap: 10px; }
+.product-item:hover, .stat-card:hover { box-shadow: var(--shadow-lift); }
+.viewfinder-box { min-height: 270px; height: clamp(260px, 36vw, 390px); border-radius: 14px; box-shadow: none; }
+.viewfinder-frame { width: min(66%, 300px); height: min(54%, 190px); }
+.scanner-live-badge, .scanned-pill-overlay { font-size: 0.85rem; }
+.scanner-error-msg { font-size: 0.95rem; }
+.scanner-retry-btn { min-height: 44px; padding: 0 18px; border-radius: 8px; }
+.found-name { font-size: 1.15rem; }
+.date-label-review { background: #FCFBF8; }
+.date-label-actions button { min-height: 46px; }
+.date-candidate-item { border-radius: 9px; }
+.store-profile-hero { border-radius: 14px; }
+.menu-list-card { box-shadow: none; }
+
+/* Mid-size screens use their full available width, without the imitation phone frame. */
+@media (min-width: 541px) {
+  body { padding: 0; align-items: stretch; }
+  .app-container { min-height: 100dvh; height: auto; max-width: none; border: 0; border-radius: 0; }
+  .screen { width: min(100%, 1120px); margin-inline: auto; padding: 28px clamp(22px, 4vw, 48px) 40px; }
+  .screen-viewport { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 10px); }
+  .screen-viewport.no-bottom-nav { padding-bottom: 24px; }
+  .bottom-nav { max-width: 100%; }
+  .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .grocery-banner-text { max-width: 55%; }
+  .form-grid-2 { column-gap: 16px; }
+  .product-item { padding: 16px 18px; }
+  .store-profile-hero { padding: 22px; }
+}
+
+/* Desktop application shell: keep the existing route buttons, arrange as a sidebar. */
+.nav-brand { display: none; }
+@media (min-width: 960px) {
+  .screen-viewport:not(.no-bottom-nav) { margin-left: 244px; padding-bottom: 0; }
+  .bottom-nav {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    transform: none;
+    width: 244px;
+    max-width: none;
+    height: 100dvh;
+    padding: 24px 16px max(24px, env(safe-area-inset-bottom, 24px));
+    border-top: 0;
+    border-right: 1px solid var(--card-border);
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .nav-brand { display: block; padding: 0 4px 22px; margin-bottom: 10px; border-bottom: 1px solid var(--card-border); }
+  .nav-brand img { display: block; width: 100%; height: auto; object-fit: contain; }
+  .nav-item { flex: 0 0 50px; width: 100%; min-height: 50px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 0 14px; border-radius: 9px; color: #52677B; font-size: 0.95rem; font-weight: 620; }
+  .nav-item:hover { background: #F6F3EE; }
+  .nav-item.active { color: var(--navy); background: #F0F3F5; }
+  .nav-item.active .nav-icon { transform: none; }
+  .nav-icon { width: 20px; height: 20px; }
+  .nav-scan-btn { flex: 0 0 50px; width: 100%; height: 50px; min-height: 50px; border: 0; border-radius: 9px; transform: none; box-shadow: none; background: var(--primary); }
+  .nav-scan-btn:hover, .nav-scan-btn:active { transform: none; }
+  .screen { max-width: 1320px; padding: 34px clamp(28px, 4vw, 60px) 48px; }
+  .dash-brand-logo { display: none; }
+  .dash-topbar { min-height: 44px; }
+  #screen-auth, #screen-splash, #screen-branding { width: 100%; max-width: 100%; margin: 0; }
+  #screen-auth { min-height: 100dvh; }
+  .modal-overlay { align-items: center; }
+  .modal-content { border-radius: 16px; max-height: min(88dvh, 760px); }
+  .toast-container { top: 24px; }
+}
+
+@media (min-width: 768px) {
+  .grocery-banner { min-height: 92px; }
+  .product-cards-list { gap: 12px; }
+  .sales-metric-row { gap: 14px; }
+}
+
+@media (max-width: 420px) {
+  .screen { padding-left: 16px; padding-right: 16px; }
+  .screen-header { margin-bottom: 16px; }
+  .splash-logo-wrap { width: min(100%, 164px); }
+  .splash-text-group h1, .splash-text-group h2 { font-size: 1.32rem; }
+  .splash-text-group p { font-size: 0.95rem; }
+  .form-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .stats-grid { gap: 10px; }
+  .stat-card { min-height: 96px; padding: 14px; }
+  .nav-label { font-size: 0.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+

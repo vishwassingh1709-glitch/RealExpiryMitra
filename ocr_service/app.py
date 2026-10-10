@@ -51,7 +51,7 @@ def initialize_model():
         app.state.model_ready = True
 
 
-def require_service_token(authorization: str | None) -> None:
+def require_service_token(authorization: Optional[str]) -> None:
     configured = os.getenv("PADDLE_OCR_TOKEN", "")
     if not configured:
         return
