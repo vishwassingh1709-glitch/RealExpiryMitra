@@ -29,7 +29,8 @@ const state = {
   lastScannedBarcode: null,
   lastScanTimestamp: 0,
   currentFacingMode: "environment",
-  availableVideoDevices: []
+  availableVideoDevices: [],
+  cameraRequestId: 0
 };
 
 // Available product catalog presets for instant demo scanning matching reference image
@@ -632,6 +633,7 @@ function hideScannerError() {
 }
 
 async function startCamera(facing = null) {
+  const requestId = ++state.cameraRequestId;
   console.log("[SCANNER] Initializing camera");
   hideScannerError();
 
@@ -693,7 +695,7 @@ async function startCamera(facing = null) {
     try {
       stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
     } catch (constraintErr) {
-      if (constraintErr.name === "OverconstrainedError" || constraintErr.name === "ConstraintNotSatisfiedError") {
+      if (["OverconstrainedError", "ConstraintNotSatisfiedError", "TypeError"].includes(constraintErr.name)) {
         console.warn("[SCANNER] Primary camera constraints failed, attempting fallback constraints");
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       } else {
@@ -701,6 +703,7 @@ async function startCamera(facing = null) {
       }
     }
   } catch (err) {
+    if (requestId !== state.cameraRequestId) return;
     console.error("[SCANNER] getUserMedia error:", err.name, err.message);
 
     if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
@@ -714,6 +717,13 @@ async function startCamera(facing = null) {
     } else {
       showScannerError("Unable to access camera: " + (err.message || "Unknown error"));
     }
+    return;
+  }
+
+  // A camera request can finish after the user stops or flips the camera.
+  // Never attach that stale stream to the viewfinder.
+  if (requestId !== state.cameraRequestId) {
+    stream.getTracks().forEach((track) => track.stop());
     return;
   }
 
@@ -736,6 +746,11 @@ async function startCamera(facing = null) {
     }
   }
 
+  if (requestId !== state.cameraRequestId) {
+    stream.getTracks().forEach((track) => track.stop());
+    return;
+  }
+
   if (sampleImg) sampleImg.style.display = "none";
   if (laser) laser.style.display = "block";
   if (liveBadge) liveBadge.style.display = "flex";
@@ -756,7 +771,7 @@ async function startCamera(facing = null) {
   } catch (_) {}
 
   // Initialize and run barcode reader loop
-  startBarcodeDetectionLoop();
+  startBarcodeDetectionLoop(requestId);
 }
 
 function flipCamera() {
@@ -764,7 +779,7 @@ function flipCamera() {
   startCamera(nextFacing);
 }
 
-async function startBarcodeDetectionLoop() {
+async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
   const video = document.getElementById("camera-video");
   if (!video) return;
 
@@ -775,16 +790,26 @@ async function startBarcodeDetectionLoop() {
   }
 
   try {
-    state.zxingControls = await reader.decodeFromVideoElement(video, (result, err, controls) => {
+    const controls = await reader.decodeFromVideoElement(video, (result, err, scanControls) => {
+      if (requestId !== state.cameraRequestId || !state.isScanning) return;
       if (result) {
         const text = result.getText();
         if (text && typeof text === "string" && text.trim().length > 0) {
+          scanControls?.stop();
           handleDetectedBarcode(text.trim());
         }
       }
     });
+    if (requestId !== state.cameraRequestId || !state.isScanning) {
+      controls.stop();
+      return;
+    }
+    state.zxingControls = controls;
   } catch (err) {
+    if (requestId !== state.cameraRequestId) return;
     console.error("[SCANNER] Reader decodeFromVideoElement error:", err);
+    stopCamera();
+    showScannerError("Scanner could not start. Please retry or upload a barcode photo.");
   }
 }
 
@@ -900,6 +925,7 @@ async function lookupBarcodeInBackend(barcode) {
 }
 
 function stopCamera() {
+  state.cameraRequestId += 1;
   console.log("[SCANNER] Stopping camera");
 
   if (state.zxingControls) {
