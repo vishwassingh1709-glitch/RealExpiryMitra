@@ -45,7 +45,9 @@ const state = {
   lastScanTimestamp: 0,
   currentFacingMode: "environment",
   availableVideoDevices: [],
-  cameraRequestId: 0
+  cameraRequestId: 0,
+  unconfirmedDateTypes: new Set(),
+  isSavingScannedInventory: false
 };
 
 // Helper: Toast message
@@ -68,6 +70,8 @@ function showScreen(screenId, pushHistory = true) {
   const target = document.getElementById(screenId);
   if (!target) return;
 
+  const previousScreen = state.currentScreen;
+
   if (pushHistory && state.currentScreen && state.currentScreen !== screenId) {
     state.previousScreens.push(state.currentScreen);
   }
@@ -76,6 +80,10 @@ function showScreen(screenId, pushHistory = true) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   target.classList.add("active");
   state.currentScreen = screenId;
+
+  // Start the live scanner when Add Product is opened; the browser still
+  // controls its normal camera permission prompt.
+  if (screenId === "screen-add-product" && previousScreen !== screenId) startCamera();
 
   // Toggle bottom navigation visibility
   const bottomNav = document.getElementById("bottom-nav");
@@ -759,6 +767,13 @@ async function startCamera(facing = null) {
       await video.play();
     } catch (playErr) {
       console.warn("[SCANNER] Video play exception:", playErr.message);
+      if (requestId !== state.cameraRequestId) return;
+      stream.getTracks().forEach((track) => track.stop());
+      state.cameraStream = null;
+      video.srcObject = null;
+      state.isScanning = false;
+      showScannerError("The camera opened, but the live preview could not start. Please retry.");
+      return;
     }
   }
 
@@ -802,6 +817,8 @@ async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
   const reader = getZxingReader();
   if (!reader) {
     console.warn("[SCANNER] ZXing reader not available");
+    stopCamera();
+    showScannerError("Barcode scanning is unavailable in this browser. Please retry or use a supported browser.");
     return;
   }
 
@@ -810,9 +827,10 @@ async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
       if (requestId !== state.cameraRequestId || !state.isScanning) return;
       if (result) {
         const text = result.getText();
-        if (text && typeof text === "string" && text.trim().length > 0) {
+        const barcode = normalizeDecodedBarcode(text);
+        if (barcode) {
           scanControls?.stop();
-          handleDetectedBarcode(text.trim(), capturePackagePhoto(video));
+          handleDetectedBarcode(barcode, capturePackagePhoto(video));
         }
       }
     });
@@ -825,19 +843,27 @@ async function startBarcodeDetectionLoop(requestId = state.cameraRequestId) {
     if (requestId !== state.cameraRequestId) return;
     console.error("[SCANNER] Reader decodeFromVideoElement error:", err);
     stopCamera();
-    showScannerError("Scanner could not start. Please retry or upload a barcode photo.");
+    showScannerError("Scanner could not start. Please retry or check camera permissions.");
   }
 }
 
-function capturePackagePhoto(video) {
+function normalizeDecodedBarcode(value) {
+  if (typeof value !== "string") return "";
+  // Preserve leading zeroes and GS1's group separator; never rewrite the payload.
+  const barcode = value.trim();
+  if (!barcode || barcode.length > 128 || /[\u0000-\u001c\u001e-\u001f\u007f]/.test(barcode)) return "";
+  return barcode;
+}
+
+function capturePackagePhoto(video, maxDimension = 960, quality = 0.72) {
   if (!video?.videoWidth || !video?.videoHeight) return null;
   try {
-    const scale = Math.min(1, 960 / video.videoWidth);
+    const scale = Math.min(1, maxDimension / video.videoWidth);
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.72);
+    return canvas.toDataURL("image/jpeg", quality);
   } catch (_) { return null; }
 }
 
@@ -951,8 +977,12 @@ function renderDateCandidates(result) {
       const targetId = ({ manufacturing_date: "add-product-mfg", packaging_date: "add-product-packaging", expiry_date: "add-product-expiry", best_before_date: "add-product-best-before" })[candidate.date_type];
       if (targetId) {
         const use = document.createElement("button");
-        use.type = "button"; use.className = "btn-secondary"; use.textContent = `Use as ${dateTypeLabel(candidate.date_type)}`;
-        use.addEventListener("click", () => { document.getElementById(targetId).value = candidate.normalized_date; });
+        use.type = "button"; use.className = "btn-secondary"; use.textContent = `Confirm ${dateTypeLabel(candidate.date_type)}`;
+        use.addEventListener("click", () => {
+          document.getElementById(targetId).value = candidate.normalized_date;
+          state.unconfirmedDateTypes.delete(candidate.date_type);
+          maybeAutoSaveConfirmedInventory(candidate);
+        });
         card.append(use);
       }
     }
@@ -1025,9 +1055,41 @@ async function selectDateLabelPhoto(file) {
     if (review) review.hidden = false;
     if (status) status.textContent = "Check that the printed date and batch text are readable, then choose Read dates.";
     state.dateExtraction = null;
+    return true;
   } catch (error) {
     if (requestId !== state.dateExtractionRequestId) return;
     if (status) status.textContent = error.message || "Photo could not be prepared. Please try another image.";
+    return false;
+  }
+}
+
+async function captureDateLabelFromLiveCamera() {
+  const video = document.getElementById("camera-video");
+  if (!state.cameraStream || !video?.videoWidth || !video?.videoHeight) {
+    document.getElementById("date-label-file-input")?.click();
+    return;
+  }
+  const status = document.getElementById("date-label-status");
+  if (status) status.textContent = "Hold the printed date steady…";
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  if (state.currentScreen !== "screen-add-product" || !state.cameraStream) return;
+  const image = capturePackagePhoto(video, 1600, 0.88);
+  if (!image) {
+    if (status) status.textContent = "Could not capture this frame. Reposition the package and try again.";
+    return;
+  }
+  await processDateLabelImage(image, true);
+}
+
+async function processDateLabelImage(dataUrl, readImmediately = false) {
+  try {
+    const imageBlob = await (await fetch(dataUrl)).blob();
+    if (!imageBlob.type.startsWith("image/")) throw new Error("Camera frame is not a valid image.");
+    const prepared = await selectDateLabelPhoto(imageBlob);
+    if (prepared && readImmediately) await readDateLabelPhoto();
+  } catch (error) {
+    const status = document.getElementById("date-label-status");
+    if (status) status.textContent = error.message || "Could not prepare the camera frame. Please try again.";
   }
 }
 
@@ -1057,7 +1119,8 @@ async function readDateLabelPhoto() {
     if (!response.ok) throw new Error(result.message || "Date extraction failed.");
     state.dateExtraction = result;
     renderDateCandidates(result);
-    if (status) status.textContent = result.message || "Review the candidates and enter or correct the date fields before saving.";
+    const filledCount = populateReadableDateCandidates(result);
+    if (status) status.textContent = `${result.message || "Review the candidates before saving."}${filledCount ? " Clear OCR readings were filled in; confirm expiry or best-before before saving." : ""}`;
     if (!result.candidates?.length) showToast(result.message, "info");
     else showToast("Date candidates are ready for your review.", "info");
   } catch (error) {
@@ -1068,6 +1131,51 @@ async function readDateLabelPhoto() {
     if (requestId === state.dateExtractionRequestId && button) { button.disabled = false; button.textContent = "Read dates from photo"; }
     if (state.dateExtractionController === controller) state.dateExtractionController = null;
   }
+}
+
+function populateReadableDateCandidates(result) {
+  let filledCount = 0;
+  const isActualOcr = (source) => ["ocr", "paddleocr", "tesseract", "ocr_space"].includes(source);
+  const fieldByType = {
+    manufacturing_date: "add-product-mfg",
+    packaging_date: "add-product-packaging",
+    expiry_date: "add-product-expiry",
+    best_before_date: "add-product-best-before"
+  };
+  for (const [type, fieldId] of Object.entries(fieldByType)) {
+    const matches = (result.candidates || []).filter((candidate) =>
+      candidate.date_type === type && isActualOcr(candidate.source) && candidate.precision === "day" &&
+      candidate.normalized_date && !candidate.uncertain && !candidate.conflict && !candidate.derived
+    );
+    const dates = [...new Set(matches.map((candidate) => candidate.normalized_date))];
+    const field = document.getElementById(fieldId);
+    if (dates.length === 1 && field && !field.value) {
+      field.value = dates[0];
+      filledCount += 1;
+      if (type === "expiry_date" || type === "best_before_date") state.unconfirmedDateTypes.add(type);
+    }
+  }
+
+  const batchMatches = (result.candidates || []).filter((candidate) =>
+    candidate.date_type === "batch_number" && isActualOcr(candidate.source) && candidate.raw_value && !candidate.uncertain && !candidate.conflict
+  );
+  const batches = [...new Set(batchMatches.map((candidate) => candidate.raw_value))];
+  const batchField = document.getElementById("add-product-batch");
+  if (batches.length === 1 && batchField && !batchField.value) { batchField.value = batches[0]; filledCount += 1; }
+  return filledCount;
+}
+
+function maybeAutoSaveConfirmedInventory(candidate) {
+  const product = state.currentLookupProduct;
+  if (!product || product.verification_status !== "confirmed" || !["catalog", "inventory"].includes(product.source)) return;
+  if (document.getElementById("found-prod-name")?.textContent?.trim() !== product.name) return;
+  if (document.getElementById("add-product-barcode")?.value?.trim() !== product.barcode) return;
+  if (!["ocr", "paddleocr", "tesseract", "ocr_space"].includes(candidate.source) || candidate.precision !== "day" || candidate.uncertain || candidate.conflict || candidate.derived) return;
+  if (!["expiry_date", "best_before_date"].includes(candidate.date_type)) return;
+  if (state.unconfirmedDateTypes.size || state.pendingProductConflict) return;
+  if (!Number.isInteger(state.addQuantity) || state.addQuantity < 1) return;
+  const hasConfirmedBatchDate = Boolean(document.getElementById("add-product-expiry")?.value || document.getElementById("add-product-best-before")?.value);
+  if (hasConfirmedBatchDate) document.getElementById("btn-save-scanned-inventory")?.click();
 }
 
 function showManualEntryForBarcode(barcode, message) {
@@ -1123,6 +1231,10 @@ function showScannerEntryView() {
   const conflict = document.getElementById("found-product-conflict");
   const loading = document.getElementById("scanner-loading");
   const detectedPill = document.getElementById("scanner-detected-pill");
+  const caption = document.getElementById("scanner-caption");
+  if (caption) caption.textContent = "Align the barcode inside the frame";
+  const statusText = document.getElementById("scanner-status-text");
+  if (statusText) statusText.textContent = "Starting scanner…";
   if (foundCard) foundCard.style.display = "none";
   if (notFoundCard) notFoundCard.style.display = "none";
   if (conflict) conflict.hidden = true;
@@ -1136,6 +1248,9 @@ function showScannerEntryView() {
   document.getElementById("add-product-packaging").value = "";
   document.getElementById("add-product-expiry").value = "";
   document.getElementById("add-product-best-before").value = "";
+  state.unconfirmedDateTypes.clear();
+  const dateNextStep = document.getElementById("date-label-next-step");
+  if (dateNextStep) dateNextStep.hidden = true;
   state.dateLabelImage = null;
   state.dateLabelImages = null;
   state.dateExtraction = null;
@@ -1148,6 +1263,8 @@ function showScannerEntryView() {
 }
 
 async function handleDetectedBarcode(barcode, packagePhoto = null) {
+  barcode = normalizeDecodedBarcode(barcode);
+  if (!barcode) return;
   // Prevent duplicate scan events from firing repeatedly
   const now = Date.now();
   if (state.isProcessingScan) return;
@@ -1223,11 +1340,19 @@ function renderIdentifiedProduct(product) {
   document.getElementById("add-product-packaging").value = "";
   document.getElementById("add-product-expiry").value = "";
   document.getElementById("add-product-best-before").value = "";
+  state.unconfirmedDateTypes.clear();
   state.dateLabelImage = null;
   state.dateLabelImages = null;
   state.dateExtraction = null;
   const dateReview = document.getElementById("date-label-review");
   if (dateReview) dateReview.hidden = true;
+  const nextStep = document.getElementById("date-label-next-step");
+  if (nextStep) {
+    nextStep.hidden = false;
+    nextStep.textContent = "Next: align the printed MFG/EXP and batch area with the camera, capture one frame, then confirm every expiry candidate.";
+  }
+  const caption = document.getElementById("scanner-caption");
+  if (caption) caption.textContent = "Align the printed date or batch area inside the frame";
   document.getElementById("add-qty-val").textContent = "1";
   state.addQuantity = 1;
   const sourceText = document.getElementById("found-prod-source");
@@ -1274,6 +1399,7 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
       if (statusText) statusText.textContent = "✓ Product identified";
       renderIdentifiedProduct(data.product);
       showToast(`Product suggestion: ${data.product.name}`, "success");
+      if (packagePhoto) void processDateLabelImage(packagePhoto, true);
     } else if (res.ok && data.status === "conflict" && data.product && data.candidate) {
       state.currentLookupProduct = null;
       state.pendingProductConflict = data;
@@ -1298,6 +1424,7 @@ async function lookupBarcodeInBackend(barcode, packagePhoto, requestId, requestC
       }
       document.getElementById("btn-use-photo-match").hidden = false;
       if (statusText) statusText.textContent = "Product details need review";
+      if (packagePhoto) void processDateLabelImage(packagePhoto, true);
     } else {
       const message = res.status === 503 || data.status === "unavailable"
         ? "Product services are unavailable. Enter the product details manually."
@@ -1739,8 +1866,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Center Raised Scan Button
   document.getElementById("btn-main-scan")?.addEventListener("click", () => {
+    const alreadyOnAddProduct = state.currentScreen === "screen-add-product";
     showScannerEntryView();
     showScreen("screen-add-product");
+    if (alreadyOnAddProduct) startCamera();
   });
 
   // Dashboard Header shortcuts
@@ -1815,16 +1944,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-res-back")?.addEventListener("click", goBack);
   document.getElementById("btn-sales-back")?.addEventListener("click", goBack);
 
-  // Camera & File Upload
-  document.getElementById("btn-start-camera")?.addEventListener("click", () => startCamera());
-  document.getElementById("btn-stop-camera")?.addEventListener("click", stopCamera);
-  document.getElementById("btn-flip-camera")?.addEventListener("click", flipCamera);
+  // Camera starts automatically on entry; retry is only shown after failure.
   document.getElementById("btn-scanner-retry")?.addEventListener("click", () => startCamera());
 
   // Manual entry appears automatically when sources cannot identify a product.
   document.getElementById("btn-manual-back-to-scan")?.addEventListener("click", () => {
     showScannerEntryView();
     state.currentLookupPhoto = null;
+    startCamera();
   });
   document.getElementById("btn-not-found-rescan")?.addEventListener("click", () => {
     const notFoundCard = document.getElementById("card-product-not-found");
@@ -1855,17 +1982,21 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-use-catalog-match")?.addEventListener("click", () => chooseConflictProduct("product"));
   document.getElementById("btn-use-photo-match")?.addEventListener("click", () => chooseConflictProduct("candidate"));
 
-  document.getElementById("scan-file-input")?.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (file) handleScanFileUpload(file);
+  document.getElementById("btn-scan-mfg-exp")?.addEventListener("click", captureDateLabelFromLiveCamera);
+  document.getElementById("btn-retake-date-label")?.addEventListener("click", () => {
+    if (state.cameraStream) captureDateLabelFromLiveCamera();
+    else document.getElementById("date-label-file-input")?.click();
   });
-
-  document.getElementById("btn-scan-mfg-exp")?.addEventListener("click", () => document.getElementById("date-label-file-input")?.click());
-  document.getElementById("btn-retake-date-label")?.addEventListener("click", () => document.getElementById("date-label-file-input")?.click());
   document.getElementById("date-label-file-input")?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     if (file) selectDateLabelPhoto(file);
     event.target.value = "";
+  });
+  ["add-product-expiry", "add-product-best-before"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => {
+      const type = id === "add-product-expiry" ? "expiry_date" : "best_before_date";
+      state.unconfirmedDateTypes.delete(type);
+    });
   });
   document.getElementById("btn-read-date-label")?.addEventListener("click", readDateLabelPhoto);
 
@@ -1892,6 +2023,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Save Scanned Inventory
   document.getElementById("btn-save-scanned-inventory")?.addEventListener("click", async () => {
+    if (state.isSavingScannedInventory) return;
     const barcode = document.getElementById("add-product-barcode").value.trim();
     const batch = document.getElementById("add-product-batch").value.trim();
     const expiry = document.getElementById("add-product-expiry").value.trim();
@@ -1905,11 +2037,23 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Provide the product name, barcode, and a confirmed expiry or best-before date.", "error");
       return;
     }
+    const unresolvedDate = (expiry && state.unconfirmedDateTypes.has("expiry_date")) ||
+      (bestBefore && state.unconfirmedDateTypes.has("best_before_date"));
+    if (unresolvedDate) {
+      showToast("Confirm the OCR expiry or best-before suggestion before saving.", "error");
+      document.getElementById("date-label-review")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     if (!state.currentLookupProduct) {
       showToast("Choose which product details match the package before saving.", "error");
       return;
     }
 
+    state.isSavingScannedInventory = true;
+    const saveButton = document.getElementById("btn-save-scanned-inventory");
+    if (saveButton) { saveButton.disabled = true; saveButton.textContent = "Saving inventory…"; }
+    const scannerStatus = document.getElementById("scanner-status-text");
+    if (scannerStatus) scannerStatus.textContent = "Saving inventory…";
     try {
       const res = await apiFetch("/api/inventory/confirm", {
         method: "POST",
@@ -1943,6 +2087,9 @@ document.addEventListener("DOMContentLoaded", () => {
       showScreen("screen-inventory");
     } catch (err) {
       showToast(`Error: ${err.message}`, "error");
+    } finally {
+      state.isSavingScannedInventory = false;
+      if (saveButton) { saveButton.disabled = false; saveButton.textContent = "Add to Inventory"; }
     }
   });
 

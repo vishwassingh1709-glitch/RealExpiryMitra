@@ -1596,6 +1596,41 @@ body {
   background: #FAF7F2;
 }
 
+/* Add Product-only scanner sizing for compact phone screens. */
+#screen-add-product .viewfinder-box {
+  height: clamp(210px, 32vh, 340px);
+  height: clamp(210px, 32svh, 340px);
+  min-height: 210px;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+#screen-add-product .viewfinder-frame {
+  width: min(68vw, 240px);
+  height: clamp(96px, 17svh, 140px);
+}
+
+#screen-add-product .date-scan-tools {
+  scroll-margin-block: 18px;
+}
+
+#screen-add-product .date-scan-help {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 360px) {
+  #screen-add-product .viewfinder-box {
+    height: 30svh;
+    height: 30vh;
+    height: 30svh;
+    min-height: 190px;
+  }
+
+  #screen-add-product .viewfinder-frame {
+    width: 66vw;
+  }
+}
+
 .file-upload-tool {
   cursor: pointer;
 }
