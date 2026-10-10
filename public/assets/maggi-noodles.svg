@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <!-- Maggi 2-Minute Noodles Yellow Pack -->
+  <rect x="14" y="20" width="72" height="60" rx="8" fill="#FACC15" stroke="#EAB308" stroke-width="2" />
+  <!-- Red Maggi Label Bubble -->
+  <path d="M 24 30 Q 50 25 76 30 Q 76 50 50 54 Q 24 50 24 30 Z" fill="#DC2626" />
+  <text x="50" y="44" font-family="-apple-system, sans-serif" font-weight="900" font-size="12" fill="#FACC15" text-anchor="middle">Maggi</text>
+  <!-- Masala 2-minute subtitle -->
+  <text x="50" y="64" font-family="-apple-system, sans-serif" font-weight="800" font-size="8" fill="#713F12" text-anchor="middle">2-Minute</text>
+  <!-- Noodle bowl icon -->
+  <path d="M 38 68 Q 50 78 62 68 Z" fill="#DC2626" />
+  <line x1="42" y1="67" x2="58" y2="67" stroke="#FACC15" stroke-width="2" />
+</svg>

@@ -1,0 +1,19 @@
+[
+  {
+    "id": "store_default",
+    "store_name": "Sharma Store",
+    "phone": "9876543210",
+    "email": "sharmastore@example.com",
+    "owner_name": "Sharma Ji",
+    "owner_uid": "uid_default",
+    "address": "Shop No. 4, Market Complex, Main Road",
+    "role": "shopkeeper",
+    "settings": {
+      "expiry_warning_days": 7,
+      "low_stock_threshold": 5,
+      "currency": "INR",
+      "currency_symbol": "₹"
+    },
+    "updated_at": "2026-10-10T12:49:58.973Z"
+  }
+]

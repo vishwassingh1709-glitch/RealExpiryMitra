@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <!-- Generic Grocery Box Placeholder -->
+  <rect x="20" y="24" width="60" height="60" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="2" />
+  <path d="M 20 42 L 80 42" stroke="#CBD5E1" stroke-width="2" stroke-dasharray="3 3" />
+  <rect x="36" y="52" width="28" height="20" rx="4" fill="#E2E8F0" />
+  <circle cx="50" cy="33" r="5" fill="#94A3B8" />
+  <path d="M 44 64 L 56 64" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" />
+</svg>

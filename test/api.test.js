@@ -1,0 +1,228 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const http = require("http");
+const app = require("../src/app");
+
+let server;
+let baseUrl;
+
+test.before(async () => {
+  return new Promise((resolve) => {
+    server = http.createServer(app);
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      baseUrl = `http://127.0.0.1:${port}`;
+      resolve();
+    });
+  });
+});
+
+test.after(async () => {
+  if (server) {
+    return new Promise((resolve) => server.close(resolve));
+  }
+});
+
+/* ---------------- FRONTEND STATIC ASSETS ---------------- */
+
+test("serves frontend index.html, styles.css, app.js, and vendor/zxing-browser.min.js", async () => {
+  const [indexRes, cssRes, jsRes, zxingRes] = await Promise.all([
+    fetch(`${baseUrl}/`),
+    fetch(`${baseUrl}/styles.css`),
+    fetch(`${baseUrl}/app.js`),
+    fetch(`${baseUrl}/vendor/zxing-browser.min.js`)
+  ]);
+
+  assert.equal(indexRes.status, 200);
+  const html = await indexRes.text();
+  assert.match(html, /ExpiryMitra/i);
+  assert.match(html, /screen-splash/);
+  assert.match(html, /screen-dashboard/);
+  assert.match(html, /screen-record-sale/);
+  assert.match(html, /zxing-browser\.min\.js/);
+
+  assert.equal(cssRes.status, 200);
+  assert.match(cssRes.headers.get("content-type"), /css/);
+
+  assert.equal(jsRes.status, 200);
+  assert.match(jsRes.headers.get("content-type"), /javascript/);
+
+  assert.equal(zxingRes.status, 200);
+  assert.match(zxingRes.headers.get("content-type"), /javascript/);
+});
+
+/* ---------------- HEALTH & SYSTEM STATUS ---------------- */
+
+test("GET /api/health returns operational status and provider breakdown", async () => {
+  const res = await fetch(`${baseUrl}/api/health`);
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.status, "ok");
+  assert.equal(data.service, "expirymitra");
+  assert.ok(data.storage);
+  assert.ok(data.ocr);
+  assert.ok(data.ai);
+});
+
+/* ---------------- INVENTORY API ---------------- */
+
+test("inventory summary and listing return accurate calculated status", async () => {
+  const summaryRes = await fetch(`${baseUrl}/api/inventory/summary`);
+  assert.equal(summaryRes.status, 200);
+  const summary = await summaryRes.json();
+  assert.ok(typeof summary.totalProducts === "number");
+  assert.ok(typeof summary.safeCount === "number");
+  assert.ok(typeof summary.expiringSoonCount === "number");
+
+  const listRes = await fetch(`${baseUrl}/api/inventory`);
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  assert.ok(Array.isArray(list));
+  assert.ok(list.length >= 1);
+  assert.ok(list[0].status);
+  assert.ok(typeof list[0].days_left === "number");
+});
+
+test("creates manual inventory item and updates it", async () => {
+  const testBarcode = `890555${Date.now().toString().slice(-7)}`;
+  const createRes = await fetch(`${baseUrl}/api/inventory/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_name: "Fresh Paneer Block",
+      brand: "FreshDairy",
+      category: "Dairy",
+      barcode: testBarcode,
+      batch: "P11",
+      expiry_date: "2029-01-01",
+      quantity: 8,
+      min_threshold: 4
+    })
+  });
+
+  assert.equal(createRes.status, 201);
+  const created = await createRes.json();
+  assert.equal(created.product_name, "Fresh Paneer Block");
+  assert.equal(created.quantity, 8);
+
+  // Update item
+  const updateRes = await fetch(`${baseUrl}/api/inventory/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantity: 12 })
+  });
+  assert.equal(updateRes.status, 200);
+  const updated = await updateRes.json();
+  assert.equal(updated.quantity, 12);
+
+  // Clean up
+  const delRes = await fetch(`${baseUrl}/api/inventory/${created.id}`, { method: "DELETE" });
+  assert.equal(delRes.status, 200);
+});
+
+/* ---------------- PRODUCT CATALOG API ---------------- */
+
+test("product barcode lookup finds product and returns 404 for missing", async () => {
+  const foundRes = await fetch(`${baseUrl}/api/products/barcode/8901030700087`);
+  assert.equal(foundRes.status, 200);
+  const foundData = await foundRes.json();
+  assert.equal(foundData.status, "found");
+  assert.equal(foundData.success, true);
+  assert.match(foundData.product.name, /Maggi/);
+  assert.equal(foundData.product.barcode, "8901030700087");
+  assert.ok(foundData.product.quantity !== undefined);
+
+  const missingRes = await fetch(`${baseUrl}/api/products/barcode/0000000000000`);
+  assert.equal(missingRes.status, 404);
+  const missingData = await missingRes.json();
+  assert.equal(missingData.success, false);
+  assert.equal(missingData.status, "not_found");
+
+  // POST /api/products/barcode
+  const postFoundRes = await fetch(`${baseUrl}/api/products/barcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ barcode: "8901030700087" })
+  });
+  assert.equal(postFoundRes.status, 200);
+  const postData = await postFoundRes.json();
+  assert.equal(postData.success, true);
+  assert.match(postData.product.name, /Maggi/);
+
+  // Invalid barcode returns 400
+  const invalidRes = await fetch(`${baseUrl}/api/products/barcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ barcode: "" })
+  });
+  assert.equal(invalidRes.status, 400);
+});
+
+/* ---------------- SALES TRANSACTIONS API ---------------- */
+
+test("sales API records sale transaction and reflects in sales summary", async () => {
+  // First, create a temporary item to sell
+  const invRes = await fetch(`${baseUrl}/api/inventory/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_name: "API Test Drink",
+      barcode: "8904443332211",
+      expiry_date: "2028-12-31",
+      quantity: 15
+    })
+  });
+  const invItem = await invRes.json();
+
+  // Record a sale
+  const saleRes = await fetch(`${baseUrl}/api/sales`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      inventory_id: invItem.id,
+      quantity_sold: 4,
+      unit_price: 35
+    })
+  });
+
+  assert.equal(saleRes.status, 201);
+  const saleData = await saleRes.json();
+  assert.equal(saleData.status, "success");
+  assert.equal(saleData.remainingStock, 11);
+  assert.equal(saleData.sale.total_amount, 140);
+
+  // Sales summary check
+  const summaryRes = await fetch(`${baseUrl}/api/sales/summary?range=all`);
+  assert.equal(summaryRes.status, 200);
+  const summary = await summaryRes.json();
+  assert.ok(summary.totalSales >= 1);
+  assert.ok(summary.totalRevenue >= 140);
+
+  // Clean up
+  await fetch(`${baseUrl}/api/inventory/${invItem.id}`, { method: "DELETE" });
+});
+
+/* ---------------- STORE PROFILE API ---------------- */
+
+test("store profile GET and PUT endpoints work properly", async () => {
+  const getRes = await fetch(`${baseUrl}/api/store`);
+  assert.equal(getRes.status, 200);
+  const store = await getRes.json();
+  assert.ok(store.store_name);
+
+  const putRes = await fetch(`${baseUrl}/api/store`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: "9123456780" })
+  });
+  assert.equal(putRes.status, 200);
+  const updated = await putRes.json();
+  assert.equal(updated.phone, "9123456780");
+
+  // Restore
+  await fetch(`${baseUrl}/api/store`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: "9876543210" })
+  });
+});

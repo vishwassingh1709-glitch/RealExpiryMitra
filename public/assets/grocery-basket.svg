@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEED9" />
+      <stop offset="100%" stop-color="#FFD6B3" />
+    </linearGradient>
+    <linearGradient id="basketGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1B3A57" />
+      <stop offset="100%" stop-color="#0E2235" />
+    </linearGradient>
+    <filter id="softShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#FF5A0A" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Background Soft Blob -->
+  <path d="M 40 180 C 20 80, 120 20, 220 30 C 310 40, 330 140, 300 230 C 270 300, 160 310, 80 270 C 40 240, 50 220, 40 180 Z" fill="url(#bgGlow)" opacity="0.8" />
+  
+  <!-- Groceries in Basket -->
+  <!-- Milk Carton -->
+  <g transform="translate(65, 95) rotate(-6)">
+    <rect x="0" y="25" width="48" height="85" rx="5" fill="#3B82F6" />
+    <polygon points="0,25 24,0 48,25" fill="#60A5FA" />
+    <rect x="18" y="-6" width="12" height="6" rx="2" fill="#FFFFFF" />
+    <!-- Milk label -->
+    <rect x="6" y="45" width="36" height="30" rx="3" fill="#FFFFFF" />
+    <circle cx="24" cy="55" r="5" fill="#3B82F6" />
+    <rect x="14" y="65" width="20" height="4" rx="2" fill="#93C5FD" />
+  </g>
+
+  <!-- Orange Juice Bottle -->
+  <g transform="translate(115, 65) rotate(4)">
+    <rect x="0" y="25" width="44" height="110" rx="6" fill="#F59E0B" />
+    <path d="M 8 25 Q 22 5 22 0 L 22 -6 L 22 0 Q 22 5 36 25 Z" fill="#FBBF24" />
+    <rect x="16" y="-12" width="12" height="8" rx="2" fill="#10B981" />
+    <!-- Label -->
+    <rect x="6" y="45" width="32" height="45" rx="3" fill="#FFFFFF" />
+    <circle cx="22" cy="62" r="8" fill="#F59E0B" />
+    <path d="M 19 62 Q 22 55 25 62 Q 22 69 19 62 Z" fill="#10B981" />
+  </g>
+
+  <!-- Bread Loaf / Biscuit Packet -->
+  <g transform="translate(155, 90) rotate(10)">
+    <rect x="0" y="10" width="55" height="95" rx="8" fill="#EF4444" />
+    <rect x="8" y="22" width="39" height="50" rx="4" fill="#FEF2F2" />
+    <rect x="14" y="32" width="27" height="6" rx="2" fill="#EF4444" />
+    <circle cx="27.5" cy="52" r="7" fill="#F59E0B" />
+  </g>
+
+  <!-- Fresh Green Vegetables / Leaves -->
+  <g transform="translate(45, 120)">
+    <path d="M 10 30 Q -15 0 0 -20 Q 25 -10 20 30 Z" fill="#10B981" />
+    <path d="M 5 25 Q 5 -5 2 -15" stroke="#059669" stroke-width="2" fill="none" />
+  </g>
+  <g transform="translate(205, 110)">
+    <path d="M 0 30 Q 35 5 25 -20 Q -5 -10 0 30 Z" fill="#34D399" />
+  </g>
+
+  <!-- Front Grocery Shopping Basket -->
+  <g filter="url(#softShadow)">
+    <path d="M 40 170 L 255 170 L 235 270 L 60 270 Z" fill="url(#basketGrad)" rx="10" />
+    <!-- Basket slats -->
+    <line x1="75" y1="190" x2="85" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <line x1="105" y1="190" x2="112" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <line x1="135" y1="190" x2="138" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <line x1="165" y1="190" x2="164" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <line x1="195" y1="190" x2="190" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <line x1="225" y1="190" x2="216" y2="250" stroke="#FF5A0A" stroke-width="7" stroke-linecap="round" />
+    <!-- Basket Top Rim -->
+    <rect x="30" y="165" width="235" height="14" rx="7" fill="#FF5A0A" />
+  </g>
+
+  <!-- Big Freshness Countdown Clock Badge -->
+  <g transform="translate(225, 205)" filter="url(#softShadow)">
+    <!-- Orange Glow Outer Ring -->
+    <circle cx="45" cy="45" r="44" fill="#FF5A0A" />
+    <circle cx="45" cy="45" r="38" fill="#FFFFFF" />
+    <!-- Clock ticks -->
+    <circle cx="45" cy="15" r="2" fill="#102A43" />
+    <circle cx="75" cy="45" r="2" fill="#102A43" />
+    <circle cx="45" cy="75" r="2" fill="#102A43" />
+    <circle cx="15" cy="45" r="2" fill="#102A43" />
+    <!-- Clock Hands -->
+    <line x1="45" y1="45" x2="45" y2="24" stroke="#FF5A0A" stroke-width="4.5" stroke-linecap="round" />
+    <line x1="45" y1="45" x2="62" y2="45" stroke="#102A43" stroke-width="3.5" stroke-linecap="round" />
+    <circle cx="45" cy="45" r="4.5" fill="#FF5A0A" />
+  </g>
+
+  <!-- Floating fresh leaves -->
+  <g transform="translate(260, 110)">
+    <path d="M 0 0 C 12 -8, 20 5, 12 18 C 0 10, -5 5, 0 0 Z" fill="#10B981" opacity="0.8" />
+  </g>
+</svg>

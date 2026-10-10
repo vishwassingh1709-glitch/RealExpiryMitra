@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="100%" height="100%">
+  <defs>
+    <linearGradient id="emGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#102A43" />
+      <stop offset="100%" stop-color="#243B53" />
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7A00" />
+      <stop offset="100%" stop-color="#FF5A0A" />
+    </linearGradient>
+  </defs>
+  <!-- Main EM Logo Mark -->
+  <g transform="translate(10, 15)">
+    <!-- Letter E with barcode stripes -->
+    <rect x="0" y="0" width="14" height="56" rx="3" fill="#102A43" />
+    <rect x="18" y="0" width="8" height="56" rx="2" fill="#102A43" />
+    <rect x="30" y="0" width="4" height="56" rx="1.5" fill="#102A43" />
+    <rect x="38" y="0" width="10" height="56" rx="2" fill="#102A43" />
+    <rect x="0" y="0" width="48" height="12" rx="3" fill="#102A43" />
+    <rect x="0" y="22" width="36" height="10" rx="2" fill="#102A43" />
+    <rect x="0" y="44" width="48" height="12" rx="3" fill="#102A43" />
+
+    <!-- Letter M with dynamic freshness clock spark -->
+    <path d="M 58 56 V 0 L 78 34 L 98 0 V 56 H 86 V 22 L 78 36 L 70 22 V 56 Z" fill="#102A43" />
+    
+    <!-- Orange Clock Hand / Freshness Spark on M -->
+    <circle cx="98" cy="12" r="5" fill="#FF5A0A" />
+    <line x1="88" y1="2" x2="108" y2="22" stroke="#FF5A0A" stroke-width="4" stroke-linecap="round" />
+    <line x1="98" y1="-4" x2="98" y2="28" stroke="#FF5A0A" stroke-width="3" stroke-linecap="round" />
+    <circle cx="106" cy="2" r="2.5" fill="#FF7A00" />
+    <circle cx="90" cy="-2" r="2" fill="#FF7A00" />
+  </g>
+
+  <!-- Typography: ExpiryMitra -->
+  <text x="135" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="28" fill="#102A43" letter-spacing="-0.5">Expiry<tspan fill="#FF5A0A">Mitra</tspan></text>
+  <text x="135" y="68" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="500" font-size="10.5" fill="#627D98" letter-spacing="0.2">Batch Wisdom. Freshness Streamlined.</text>
+</svg>

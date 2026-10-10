@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <!-- Britannia Good Day Yellow Biscuit Packet -->
+  <rect x="14" y="22" width="72" height="56" rx="8" fill="#F59E0B" stroke="#D97706" stroke-width="2" />
+  <rect x="20" y="28" width="60" height="44" rx="5" fill="#FEF3C7" />
+  <!-- Red Brand Box -->
+  <rect x="30" y="32" width="40" height="12" rx="3" fill="#DC2626" />
+  <text x="50" y="41" font-family="-apple-system, sans-serif" font-weight="900" font-size="8" fill="#FFFFFF" text-anchor="middle">BRITANNIA</text>
+  <!-- Good Day Text -->
+  <text x="50" y="55" font-family="-apple-system, sans-serif" font-weight="800" font-size="9" fill="#B45309" text-anchor="middle">Good Day</text>
+  <!-- Smile Cookie Graphic -->
+  <circle cx="50" cy="64" r="5" fill="#F59E0B" />
+  <path d="M 47 64 Q 50 67 53 64" stroke="#78350F" stroke-width="1.2" fill="none" />
+</svg>

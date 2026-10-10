@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 340" width="100%" height="100%">
+  <defs>
+    <linearGradient id="warmBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FEF3C7" />
+      <stop offset="100%" stop-color="#FDE68A" />
+    </linearGradient>
+    <linearGradient id="apronGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+  </defs>
+
+  <!-- Store Background Shelves -->
+  <rect x="20" y="30" width="300" height="260" rx="20" fill="url(#warmBg)" />
+  
+  <!-- Shelves -->
+  <rect x="40" y="100" width="260" height="8" rx="4" fill="#D97706" />
+  <rect x="40" y="160" width="260" height="8" rx="4" fill="#D97706" />
+  
+  <!-- Products on Shelves -->
+  <!-- Shelf 1 items -->
+  <rect x="50" y="65" width="24" height="35" rx="4" fill="#EF4444" />
+  <rect x="85" y="60" width="20" height="40" rx="4" fill="#10B981" />
+  <rect x="115" y="70" width="28" height="30" rx="4" fill="#3B82F6" />
+  <circle cx="230" cy="80" r="14" fill="#F59E0B" />
+  <circle cx="265" cy="80" r="14" fill="#EF4444" />
+
+  <!-- Shelf 2 items -->
+  <rect x="50" y="125" width="30" height="35" rx="5" fill="#F59E0B" />
+  <rect x="90" y="120" width="26" height="40" rx="4" fill="#8B5CF6" />
+  <rect x="225" y="120" width="35" height="40" rx="4" fill="#10B981" />
+  <rect x="270" y="125" width="20" height="35" rx="3" fill="#EC4899" />
+
+  <!-- Shopkeeper Character -->
+  <!-- Head & Hair -->
+  <g transform="translate(170, 75)">
+    <!-- Neck -->
+    <rect x="-14" y="55" width="28" height="25" rx="4" fill="#FBCFE8" />
+    <!-- Face -->
+    <circle cx="0" cy="20" r="32" fill="#FDE68A" />
+    <!-- Hair -->
+    <path d="M -34 10 C -34 -25, 34 -25, 34 10 C 25 -5, -25 -5, -34 10 Z" fill="#1E293B" />
+    <path d="M -34 10 C -30 25, -26 20, -26 15" stroke="#1E293B" stroke-width="4" stroke-linecap="round" />
+    <!-- Eyes (happy closed arc) -->
+    <path d="M -18 16 Q -12 12 -6 16" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round" />
+    <path d="M 6 16 Q 12 12 18 16" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round" />
+    <!-- Eyebrows -->
+    <path d="M -20 8 Q -13 5 -6 8" stroke="#1E293B" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M 6 8 Q 13 5 20 8" stroke="#1E293B" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <!-- Friendly Smile -->
+    <path d="M -12 28 Q 0 42 12 28" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round" />
+    <path d="M -10 29 Q 0 38 10 29 Z" fill="#EF4444" />
+    <!-- Blush -->
+    <circle cx="-22" cy="28" r="5" fill="#F472B6" opacity="0.4" />
+    <circle cx="22" cy="28" r="5" fill="#F472B6" opacity="0.4" />
+  </g>
+
+  <!-- Body & Apron -->
+  <g transform="translate(170, 150)">
+    <!-- Shoulders / Shirt -->
+    <path d="M -60 10 C -40 -10, 40 -10, 60 10 L 75 140 L -75 140 Z" fill="#F8FAFC" />
+    <!-- Collar -->
+    <polygon points="-18,-5 0,15 18,-5" fill="#E2E8F0" />
+    
+    <!-- Dark Navy Apron -->
+    <path d="M -38 20 L 38 20 L 48 140 L -48 140 Z" fill="url(#apronGrad)" />
+    <!-- Apron Straps -->
+    <line x1="-38" y1="20" x2="-25" y2="-5" stroke="#0F172A" stroke-width="6" stroke-linecap="round" />
+    <line x1="38" y1="20" x2="25" y2="-5" stroke="#0F172A" stroke-width="6" stroke-linecap="round" />
+
+    <!-- Digital Tablet held in hands -->
+    <g transform="translate(0, 75)">
+      <!-- Hands -->
+      <circle cx="-52" cy="10" r="14" fill="#FDE68A" />
+      <circle cx="52" cy="10" r="14" fill="#FDE68A" />
+      <!-- Tablet body -->
+      <rect x="-46" y="-15" width="92" height="65" rx="8" fill="#0F172A" stroke="#334155" stroke-width="2" />
+      <!-- Tablet screen -->
+      <rect x="-40" y="-10" width="80" height="55" rx="4" fill="#10B981" />
+      <!-- Freshness checkmark on screen -->
+      <path d="M -16 16 L -4 28 L 18 6" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <rect x="-30" y="-4" width="60" height="4" rx="2" fill="#A7F3D0" />
+    </g>
+  </g>
+
+  <!-- Fresh Framing Greenery at Bottom -->
+  <path d="M 0 310 C 50 250, 110 320, 160 300 C 220 280, 290 320, 340 290 L 340 340 L 0 340 Z" fill="#10B981" />
+  <path d="M 20 280 C 40 240, 70 270, 50 310 Z" fill="#059669" />
+  <path d="M 290 270 C 320 240, 340 270, 310 310 Z" fill="#34D399" />
+</svg>

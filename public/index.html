@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ExpiryMitra — Smart Food & Grocery Expiry Management</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top System Status Bar -->
+    <header class="status-bar" id="app-status-bar">
+      <span class="status-time" id="status-time">9:41</span>
+      <div class="status-bar-icons" aria-hidden="true">
+        <svg class="status-icon" width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
+          <path d="M1 9h2v3H1V9zm4-3h2v6H5V6zm4-3h2v9H9V3zm4-3h2v12h-2V0z"/>
+        </svg>
+        <svg class="status-icon" width="15" height="12" viewBox="0 0 15 12" fill="currentColor">
+          <path d="M7.5 3C9.5 3 11.3 3.8 12.6 5.1L14 3.7C12.3 2 10 1 7.5 1S2.7 2 1 3.7l1.4 1.4C3.7 3.8 5.5 3 7.5 3zm0 4c1.1 0 2.2.5 3 1.2L12 6.7C10.8 5.7 9.2 5 7.5 5S4.2 5.7 3 6.7l1.5 1.5c.8-.7 1.9-1.2 3-1.2zm0 4c.8 0 1.5.7 1.5 1.5S8.3 14 7.5 14 6 13.3 6 12.5 6.7 11 7.5 11z"/>
+        </svg>
+        <div class="battery-icon">
+          <div class="battery-body">
+            <div class="battery-level"></div>
+          </div>
+          <div class="battery-cap"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Toast Notifications -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+    <!-- Main Screens Viewport -->
+    <main class="screen-viewport" id="viewport">
+
+      <!-- ====================================================================
+           SCREEN 1: WELCOME / SPLASH
+           ==================================================================== -->
+      <section class="screen" id="screen-splash">
+        <div class="splash-content">
+          <div class="splash-logo-wrap">
+            <img src="assets/logo.svg" alt="ExpiryMitra Logo" class="splash-logo">
+          </div>
+
+          <div class="splash-hero-box">
+            <div class="splash-blob-bg"></div>
+            <img src="assets/grocery-basket.svg" alt="Grocery Freshness Basket" class="splash-hero-img">
+          </div>
+
+          <div class="splash-text-group">
+            <p class="splash-bullets">Track &bull; Prioritize &bull; Sell Before It Expires</p>
+            <div class="splash-dots" aria-hidden="true">
+              <span class="splash-dot active"></span>
+              <span class="splash-dot"></span>
+              <span class="splash-dot"></span>
+              <span class="splash-dot"></span>
+            </div>
+          </div>
+
+          <div class="splash-action">
+            <button class="btn-primary" id="btn-splash-start" type="button">
+              Get Started <span class="arrow-icon">&rarr;</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 2: AUTHENTICATION AND STORE SETUP
+           ==================================================================== -->
+      <section class="screen" id="screen-auth">
+        <div class="auth-wrapper">
+          <div class="auth-logo-header">
+            <img src="assets/logo.svg" alt="ExpiryMitra" class="auth-brand-logo">
+            <p class="auth-tagline">Batch Wisdom. Freshness Streamlined.</p>
+          </div>
+
+          <!-- Role Toggle: Shopkeeper vs Customer -->
+          <div class="role-toggle-container" role="tablist">
+            <button class="role-toggle-btn active" id="role-shopkeeper-btn" type="button" role="tab" aria-selected="true">
+              Shopkeeper
+            </button>
+            <button class="role-toggle-btn" id="role-customer-btn" type="button" role="tab" aria-selected="false">
+              Customer
+            </button>
+          </div>
+
+          <form id="auth-form" class="auth-form" onsubmit="return false;">
+            <!-- Shop Name Field -->
+            <div class="form-group" id="group-shop-name">
+              <label class="sr-only" for="auth-shop-name">Shop Name</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+                <div class="input-content">
+                  <span class="input-label-mini">Shop Name</span>
+                  <input type="text" id="auth-shop-name" class="input-field" value="Sharma Store" placeholder="Sharma Store">
+                </div>
+              </div>
+            </div>
+
+            <!-- Phone / Email Field -->
+            <div class="form-group">
+              <label class="sr-only" for="auth-identifier">Phone / Email</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                <div class="input-content">
+                  <span class="input-label-mini">Phone / Email</span>
+                  <input type="text" id="auth-identifier" class="input-field" value="9876543210" placeholder="9876543210">
+                </div>
+              </div>
+            </div>
+
+            <!-- Password Field -->
+            <div class="form-group">
+              <label class="sr-only" for="auth-password">Password</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <div class="input-content">
+                  <span class="input-label-mini">Password</span>
+                  <input type="password" id="auth-password" class="input-field" value="••••••••" placeholder="Password">
+                </div>
+                <button type="button" class="password-toggle-btn" id="btn-toggle-password" aria-label="Toggle password visibility">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-meta-row">
+              <label class="remember-label">
+                <input type="checkbox" id="auth-remember" class="custom-checkbox" checked>
+                <span>Remember me</span>
+              </label>
+              <a href="#" class="forgot-link" id="link-forgot-pass">Forgot?</a>
+            </div>
+
+            <button class="btn-primary" id="btn-login-submit" type="submit">
+              Login
+            </button>
+
+            <div class="auth-divider">
+              <span>or continue with</span>
+            </div>
+
+            <button type="button" class="google-btn" id="btn-google-auth">
+              <svg class="google-icon" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.15C3.25 21.37 7.31 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.27C.46 8.2 0 10.04 0 12s.46 3.8 1.27 5.42l4.01-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.63 1.27 6.58l4.01 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+              Continue with Google
+            </button>
+
+            <p class="auth-switch-text">
+              Don't have an account? <button type="button" class="auth-switch-btn" id="btn-switch-signup">Sign Up</button>
+            </p>
+          </form>
+
+          <!-- Subtle bottom decorative botanical corner leaves -->
+          <div class="auth-leaf-decor left" aria-hidden="true"></div>
+          <div class="auth-leaf-decor right" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 3: DASHBOARD / HOME
+           ==================================================================== -->
+      <section class="screen" id="screen-dashboard">
+        <!-- Top App Bar with hamburger, logo, notif, user avatar -->
+        <header class="dash-topbar">
+          <div class="dash-topbar-left">
+            <button class="header-btn" id="btn-menu" aria-label="Open navigation menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <div class="dash-em-brand">
+              <span class="dash-em-title">EM</span>
+              <span class="dash-em-spark">&#10022;</span>
+            </div>
+          </div>
+          <div class="dash-topbar-right">
+            <button class="header-btn notif-btn" id="btn-notif" aria-label="View notifications">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span class="notif-badge"></span>
+            </button>
+            <button class="user-avatar-chip" id="user-avatar-initials" type="button" aria-label="User profile">
+              SS
+            </button>
+          </div>
+        </header>
+
+        <!-- Greeting Row -->
+        <div class="greeting-row">
+          <h1 class="greeting-title">Good Morning, Shopkeeper! &#128075;</h1>
+          <p class="store-name-sub" id="dash-store-name">Sharma Store</p>
+        </div>
+
+        <!-- Banner Card -->
+        <div class="grocery-banner" id="banner-grocery" role="button" tabindex="0" aria-label="Freshness tip banner">
+          <div class="grocery-banner-text">
+            Track your stock, reduce waste and sell smarter.
+          </div>
+          <div class="grocery-banner-img-wrap">
+            <img src="assets/banner-groceries.svg" alt="Groceries shelves" class="grocery-banner-img">
+          </div>
+        </div>
+
+        <!-- 2x2 Stats Grid -->
+        <div class="stats-grid">
+          <!-- Total Products -->
+          <div class="stat-card" data-nav="inventory" data-filter="all" role="button" tabindex="0">
+            <div class="stat-meta">
+              <div class="stat-number" id="stat-total-products">128</div>
+              <div class="stat-label">Total Products</div>
+            </div>
+            <div class="stat-icon-box stat-icon-green" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Expiring Soon -->
+          <div class="stat-card" data-nav="inventory" data-filter="expiring_soon" role="button" tabindex="0">
+            <div class="stat-meta">
+              <div class="stat-number" id="stat-expiring-soon">7</div>
+              <div class="stat-label">Expiring Soon</div>
+            </div>
+            <div class="stat-icon-box stat-icon-orange" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Expired -->
+          <div class="stat-card" data-nav="inventory" data-filter="expired" role="button" tabindex="0">
+            <div class="stat-meta">
+              <div class="stat-number" id="stat-expired">2</div>
+              <div class="stat-label">Expired</div>
+            </div>
+            <div class="stat-icon-box stat-icon-red" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Low Stock -->
+          <div class="stat-card" data-nav="inventory" data-filter="low_stock" role="button" tabindex="0">
+            <div class="stat-meta">
+              <div class="stat-number" id="stat-low-stock">5</div>
+              <div class="stat-label">Low Stock</div>
+            </div>
+            <div class="stat-icon-box stat-icon-blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Needs Attention Section Header -->
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="warning-icon-badge">&#9888;&#65039;</span>
+            Needs Attention
+          </h2>
+          <button class="section-link-btn" id="link-attention-all" type="button">
+            View All &rarr;
+          </button>
+        </div>
+
+        <!-- Attention Items List -->
+        <div class="product-cards-list" id="dash-attention-list">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 4: INVENTORY
+           ==================================================================== -->
+      <section class="screen" id="screen-inventory">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-inv-back" aria-label="Go back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Inventory</h1>
+          </div>
+          <button class="header-btn" id="btn-inv-refresh" aria-label="Refresh inventory list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Search Bar with Filter Button -->
+        <div class="search-bar-wrap">
+          <div class="search-input-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="inv-search-input" class="search-input" placeholder="Search product, batch or category...">
+          </div>
+          <button class="filter-btn-round" id="btn-open-category-filter" aria-label="Category filters">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="21" x2="4" y2="14"/>
+              <line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/>
+              <line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/>
+              <line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filter Chips Row -->
+        <div class="filter-row" role="tablist">
+          <button class="filter-pill active" data-filter="all" type="button">All</button>
+          <button class="filter-pill" data-filter="expiring_soon" type="button">Expiring Soon</button>
+          <button class="filter-pill" data-filter="expired" type="button">Expired</button>
+          <button class="filter-pill" data-filter="low_stock" type="button">Low Stock</button>
+        </div>
+
+        <!-- Inventory List -->
+        <div class="product-cards-list" id="inventory-list">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 5: ADD PRODUCT / SCAN BARCODE
+           ==================================================================== -->
+      <section class="screen" id="screen-add-product">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-add-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Add Product</h1>
+          </div>
+          <button class="header-btn" id="btn-add-more" aria-label="More actions">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Segmented Tab Header: Scan Barcode vs Manual Entry -->
+        <div class="tab-header" role="tablist">
+          <button class="tab-btn active" id="tab-scan-barcode" type="button" role="tab" aria-selected="true">
+            Scan Barcode
+          </button>
+          <button class="tab-btn" id="tab-manual-entry" type="button" role="tab" aria-selected="false">
+            Manual Entry
+          </button>
+        </div>
+
+        <!-- TAB 1: Scan Barcode View -->
+        <div id="view-tab-scan" class="tab-view-content">
+          <!-- Viewfinder Camera Frame -->
+          <div class="viewfinder-box" id="scanner-viewfinder-box">
+            <video id="camera-video" class="viewfinder-video" autoplay playsinline webkit-playsinline muted style="display: none;"></video>
+            <img src="assets/maggi-noodles.svg" id="scan-viewfinder-sample-img" alt="Scanning preview" class="viewfinder-sample-img">
+            
+            <div class="viewfinder-overlay" id="scanner-overlay">
+              <!-- Live scanner status badge inside viewfinder -->
+              <div class="scanner-live-badge" id="scanner-live-badge" style="display: none;">
+                <span class="scanner-pulse-dot"></span>
+                <span id="scanner-status-text">Scanning for barcode...</span>
+              </div>
+
+              <!-- Barcode detection pill overlay on viewfinder -->
+              <div class="scanned-pill-overlay" id="scanner-detected-pill" style="display: none;">
+                <span class="pill-check">&#10003;</span>
+                <span id="scanner-detected-code">8901030700087</span>
+              </div>
+
+              <div class="viewfinder-frame" id="scanner-frame">
+                <span class="corner top-left"></span>
+                <span class="corner top-right"></span>
+                <span class="corner bottom-left"></span>
+                <span class="corner bottom-right"></span>
+                <div class="scan-laser" id="scanner-laser" style="display: none;"></div>
+              </div>
+              <span class="viewfinder-caption" id="scanner-caption">Point camera at barcode</span>
+            </div>
+
+            <!-- Scanner Error / Permission Overlay -->
+            <div class="scanner-error-overlay" id="scanner-error-overlay" style="display: none;">
+              <div class="scanner-error-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <p class="scanner-error-msg" id="scanner-error-msg">Camera permission denied</p>
+              <button class="scanner-retry-btn" id="btn-scanner-retry" type="button">Try Again</button>
+            </div>
+          </div>
+
+          <!-- Camera & File Quick Controls -->
+          <div class="quick-scanner-bar">
+            <button class="quick-tool-btn" id="btn-start-camera" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span id="btn-camera-label">Camera</span>
+            </button>
+            <button class="quick-tool-btn btn-stop-cam" id="btn-stop-camera" type="button" style="display: none;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2"/>
+              </svg>
+              <span>Stop</span>
+            </button>
+            <button class="quick-tool-btn" id="btn-flip-camera" type="button" style="display: none;" title="Switch camera">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Flip</span>
+            </button>
+            <label class="quick-tool-btn file-upload-tool">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>Upload Photo</span>
+              <input type="file" id="scan-file-input" accept="image/*" style="display: none;">
+            </label>
+            <button class="quick-tool-btn" id="btn-demo-barcode" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 5v14"/>
+                <path d="M8 5v14"/>
+                <path d="M12 5v14"/>
+                <path d="M17 5v14"/>
+                <path d="M21 5v14"/>
+              </svg>
+              <span>Preset Barcode</span>
+            </button>
+          </div>
+
+          <!-- Product Not Found Card -->
+          <div class="card not-found-card" id="card-product-not-found" style="display: none;">
+            <div class="not-found-header">
+              <div class="not-found-icon">&#128269;</div>
+              <div style="flex: 1;">
+                <div class="not-found-title">Product Not Found</div>
+                <p class="not-found-subtitle">No catalog item found for barcode <span id="not-found-barcode-display" class="barcode-highlight"></span></p>
+              </div>
+            </div>
+            <div class="not-found-actions">
+              <button class="btn-primary" id="btn-not-found-manual" type="button" style="margin-top: 10px;">
+                Add This Product Manually &rarr;
+              </button>
+              <button class="btn-text-green" id="btn-not-found-rescan" type="button" style="margin-top: 8px; justify-content: center; width: 100%;">
+                Scan Again
+              </button>
+            </div>
+          </div>
+
+          <!-- Product Found Card -->
+          <div class="product-found-card" id="card-product-found">
+            <div class="product-found-title">Product Found</div>
+            <div class="product-found-row">
+              <div class="product-found-meta">
+                <div class="product-thumb">
+                  <img id="found-prod-img" src="assets/maggi-noodles.svg" alt="Product found">
+                </div>
+                <div>
+                  <h3 id="found-prod-name" class="found-name">Maggi Noodles</h3>
+                  <p id="found-prod-variant" class="found-variant">Masala, 70g</p>
+                </div>
+              </div>
+              <button class="btn-text-green" id="btn-edit-found" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Edit
+              </button>
+            </div>
+          </div>
+
+          <!-- Form inputs below found product (2 column grid) -->
+          <div class="form-grid-2">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="add-product-barcode">Product No.</label>
+              <input type="text" id="add-product-barcode" class="input-field" value="B560">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="add-product-batch">Batch No.</label>
+              <input type="text" id="add-product-batch" class="input-field" value="M102">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group-compact">
+              <label class="form-compact-label">Quantity</label>
+              <div class="stepper-wrap">
+                <button type="button" class="stepper-btn" id="btn-add-qty-dec">&minus;</button>
+                <span class="stepper-value" id="add-qty-val">50</span>
+                <button type="button" class="stepper-btn" id="btn-add-qty-inc">&plus;</button>
+              </div>
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="add-product-expiry">Expiry Date</label>
+              <div class="date-input-wrap">
+                <input type="date" id="add-product-expiry" class="input-field" value="2026-11-05">
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="btn-save-scanned-inventory" type="button">
+            Add to Inventory
+          </button>
+        </div>
+
+        <!-- TAB 2: Manual Entry View -->
+        <div id="view-tab-manual" class="tab-view-content" style="display: none;">
+          <form id="form-manual-entry" onsubmit="return false;">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="manual-name">Product Name *</label>
+              <input type="text" id="manual-name" class="input-field" placeholder="e.g. Amul Milk (1L)" required>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-brand">Brand</label>
+                <input type="text" id="manual-brand" class="input-field" placeholder="e.g. Amul">
+              </div>
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-category">Category</label>
+                <select id="manual-category" class="input-field select-field">
+                  <option value="Dairy">Dairy</option>
+                  <option value="Snacks">Snacks</option>
+                  <option value="Packaged Food">Packaged Food</option>
+                  <option value="Beverages">Beverages</option>
+                  <option value="Grains & Cereals">Grains & Cereals</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-barcode">Barcode *</label>
+                <input type="text" id="manual-barcode" class="input-field" placeholder="8901262010015" required>
+              </div>
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-batch">Batch No.</label>
+                <input type="text" id="manual-batch" class="input-field" placeholder="B102">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-mfg">MFG Date</label>
+                <input type="date" id="manual-mfg" class="input-field">
+              </div>
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-expiry">Expiry Date *</label>
+                <input type="date" id="manual-expiry" class="input-field" required>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-quantity">Quantity</label>
+                <input type="number" id="manual-quantity" class="input-field" value="1" min="1">
+              </div>
+              <div class="form-group-compact">
+                <label class="form-compact-label" for="manual-min-stock">Min Stock Alert</label>
+                <input type="number" id="manual-min-stock" class="input-field" value="5" min="1">
+              </div>
+            </div>
+
+            <button class="btn-primary" id="btn-save-manual-inventory" type="submit">
+              Save to Inventory
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 6: PRODUCT DETAILS
+           ==================================================================== -->
+      <section class="screen" id="screen-product-details">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-details-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Product Details</h1>
+          </div>
+          <button class="header-btn" id="btn-details-more" aria-label="Actions">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Product Hero Card -->
+        <div class="product-hero-card">
+          <div class="product-hero-img-box">
+            <img id="detail-prod-img" src="assets/maggi-noodles.svg" alt="Product" class="product-hero-img">
+          </div>
+          <h2 id="detail-prod-name" class="product-hero-title">Maggi Noodles</h2>
+          <p id="detail-prod-variant" class="product-hero-sub">Masala, 70g</p>
+          <span id="detail-prod-badge" class="badge badge-safe">&#9679; In Stock</span>
+        </div>
+
+        <!-- Segmented Tab Navigation: Overview, Stock History, Sales -->
+        <div class="detail-tabs-bar" role="tablist">
+          <button class="detail-tab-btn active" id="tab-det-overview" type="button" role="tab">Overview</button>
+          <button class="detail-tab-btn" id="tab-det-history" type="button" role="tab">Stock History</button>
+          <button class="detail-tab-btn" id="tab-det-sales" type="button" role="tab">Sales</button>
+        </div>
+
+        <!-- 6-tile Info Grid -->
+        <div class="info-grid-6" id="detail-overview-grid">
+          <div class="info-tile">
+            <div class="info-tile-label">Batch No.</div>
+            <div class="info-tile-val" id="tile-batch">B560</div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile-label">Expiry Date</div>
+            <div class="info-tile-val" id="tile-expiry">05 Nov 2026</div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile-label">Quantity</div>
+            <div class="info-tile-val" id="tile-quantity">50 units</div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile-label">Days Left</div>
+            <div class="info-tile-val highlight-orange" id="tile-days-left">26 days</div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile-label">Category</div>
+            <div class="info-tile-val" id="tile-category">Snacks</div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile-label">Product No.</div>
+            <div class="info-tile-val" id="tile-barcode">M102</div>
+          </div>
+        </div>
+
+        <!-- Actions Section (2x2 grid) -->
+        <div class="section-header" style="margin-top: 18px;">
+          <h2 class="section-title">Actions</h2>
+        </div>
+
+        <div class="actions-grid">
+          <button class="action-tile-btn action-tile-orange" id="btn-act-record-sale" type="button">
+            <div class="action-tile-icon-box orange">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="21" r="1"/>
+                <circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+            </div>
+            <span>Record Sale</span>
+          </button>
+
+          <button class="action-tile-btn action-tile-green" id="btn-act-add-stock" type="button">
+            <div class="action-tile-icon-box green">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                <line x1="12" y1="11" x2="12" y2="17"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
+              </svg>
+            </div>
+            <span>Add Stock</span>
+          </button>
+
+          <button class="action-tile-btn action-tile-white" id="btn-act-edit" type="button">
+            <div class="action-tile-icon-box navy">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+            </div>
+            <span>Edit Product</span>
+          </button>
+
+          <button class="action-tile-btn action-tile-red" id="btn-act-delete" type="button">
+            <div class="action-tile-icon-box red">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </div>
+            <span>Delete</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 7: RECORD SALE
+           ==================================================================== -->
+      <section class="screen" id="screen-record-sale">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-sale-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Record Sale</h1>
+          </div>
+          <button class="header-btn" id="btn-sale-more" aria-label="Options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Selected Product Summary Card -->
+        <div class="sale-product-card">
+          <div class="product-thumb">
+            <img id="sale-prod-img" src="assets/amul-milk.svg" alt="Product">
+          </div>
+          <div class="sale-prod-info">
+            <h3 id="sale-prod-name" class="sale-prod-title">Amul Milk (1L)</h3>
+            <p id="sale-prod-batch" class="sale-prod-meta">Batch B102</p>
+            <p class="sale-prod-stock-line">
+              Available Stock: <span id="sale-prod-stock">20 units</span>
+            </p>
+          </div>
+          <span id="sale-prod-badge" class="badge badge-expired">Expires in 2 days</span>
+        </div>
+
+        <label class="form-compact-label" style="font-size: 14px; font-weight: 700; margin-top: 14px;">Quantity to Sell</label>
+
+        <!-- Large Quantity Stepper Card -->
+        <div class="sale-stepper-big">
+          <button type="button" class="sale-stepper-btn" id="btn-sale-qty-dec">&minus;</button>
+          <span class="sale-stepper-val" id="sale-qty-val">5</span>
+          <button type="button" class="sale-stepper-btn" id="btn-sale-qty-inc">&plus;</button>
+        </div>
+
+        <!-- Price Breakdown -->
+        <div class="sale-price-summary">
+          <div>
+            <div class="price-sub-label">Unit Price &times; Qty</div>
+            <div class="price-calc-val" id="sale-unit-calc">&#8377;50 &times; 5</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="price-sub-label">Total Amount</div>
+            <div class="sale-price-total" id="sale-total-amount">&#8377;250</div>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-confirm-sale" type="button">
+          Confirm Sale
+        </button>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 8: EXPIRY ALERTS
+           ==================================================================== -->
+      <section class="screen" id="screen-alerts">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-alerts-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Expiry Alerts</h1>
+          </div>
+          <button class="header-btn" id="btn-alerts-filter" aria-label="Filter alerts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Filter pills with counts -->
+        <div class="filter-row" role="tablist">
+          <button class="filter-pill active" data-alert-filter="all" id="pill-alert-all" type="button">All (9)</button>
+          <button class="filter-pill" data-alert-filter="critical" id="pill-alert-critical" type="button">Critical (2)</button>
+          <button class="filter-pill" data-alert-filter="soon" id="pill-alert-soon" type="button">Soon (5)</button>
+          <button class="filter-pill" data-alert-filter="expired" id="pill-alert-expired" type="button">Expired (2)</button>
+        </div>
+
+        <!-- Alerts Product List -->
+        <div class="product-cards-list" id="alerts-list">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 9: SCAN RESULT & OCR EXIRY READER
+           ==================================================================== -->
+      <section class="screen" id="screen-scan-result">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-res-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Scan Result</h1>
+          </div>
+          <button class="header-btn" id="btn-res-switch-cam" aria-label="Switch camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Camera / Scanned Image Preview -->
+        <div class="viewfinder-box" style="height: 190px;">
+          <img id="scanned-image-preview" src="assets/britannia-biscuits.svg" alt="Scanned item" class="viewfinder-sample-img">
+          <div class="viewfinder-overlay">
+            <div class="viewfinder-frame" style="width: 200px; height: 120px;">
+              <span class="corner top-left"></span>
+              <span class="corner top-right"></span>
+              <span class="corner bottom-left"></span>
+              <span class="corner bottom-right"></span>
+              <div class="scan-laser"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dark Navy Scanned Barcode Chip -->
+        <div class="scanned-barcode-chip-row">
+          <span class="scanned-barcode-pill" id="badge-scanned-barcode">
+            8901234567890
+          </span>
+        </div>
+
+        <!-- Product Preview Card -->
+        <div class="card product-item-preview">
+          <div class="product-thumb">
+            <img id="res-prod-img" src="assets/britannia-biscuits.svg" alt="Product">
+          </div>
+          <div style="flex: 1;">
+            <h3 id="res-prod-name" class="product-name">Britannia Biscuits</h3>
+            <p id="res-prod-variant" class="product-meta">Good Day, 100g</p>
+          </div>
+        </div>
+
+        <!-- Real AI & OCR Extraction Review Card -->
+        <div class="card ocr-review-card">
+          <div class="ocr-review-header">
+            <span class="ocr-review-title">OCR &amp; AI Extraction</span>
+            <span class="badge badge-safe" id="res-confidence-badge">96% Confident</span>
+          </div>
+
+          <div class="ocr-raw-box" id="res-raw-text">
+            MFG 12/06/2024 EXP 11/06/2026 BATCH A24B7
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="res-mfg-date">Manufacturing Date</label>
+              <input type="date" id="res-mfg-date" class="input-field" value="2024-06-12">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="res-expiry-date">Expiry Date</label>
+              <input type="date" id="res-expiry-date" class="input-field" value="2026-06-11">
+            </div>
+          </div>
+
+          <div class="form-grid-2" style="margin-top: 6px;">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="res-batch">Batch</label>
+              <input type="text" id="res-batch" class="input-field" value="A24B7">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="res-quantity">Quantity</label>
+              <input type="number" id="res-quantity" class="input-field" value="1" min="1">
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-confirm-add-scanned" type="button">
+          Add This Product
+        </button>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 10: SALES DASHBOARD
+           ==================================================================== -->
+      <section class="screen" id="screen-sales">
+        <header class="screen-header">
+          <div class="screen-header-left">
+            <button class="header-btn" id="btn-sales-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <h1 class="screen-title">Sales</h1>
+          </div>
+          <button class="header-btn" id="btn-sales-more" aria-label="More">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Time Range Filters: Today / This Week / This Month -->
+        <div class="filter-row" role="tablist">
+          <button class="filter-pill active-navy" data-sales-range="today" type="button">Today</button>
+          <button class="filter-pill" data-sales-range="this_week" type="button">This Week</button>
+          <button class="filter-pill" data-sales-range="this_month" type="button">This Month</button>
+        </div>
+
+        <!-- 2 Metric Cards: Total Sales and Total Revenue -->
+        <div class="sales-metric-row">
+          <div class="sales-metric-card">
+            <div class="sales-metric-val" id="sales-stat-count">18</div>
+            <div class="sales-metric-lbl">Total Sales</div>
+          </div>
+          <div class="sales-metric-card">
+            <div class="sales-metric-val revenue" id="sales-stat-revenue">&#8377;1,440</div>
+            <div class="sales-metric-lbl">Total Revenue</div>
+          </div>
+        </div>
+
+        <!-- Recent Sales Section -->
+        <div class="section-header">
+          <h2 class="section-title">Recent Sales</h2>
+          <button class="section-link-btn" id="link-sales-all" type="button">View All &rarr;</button>
+        </div>
+
+        <div class="product-cards-list" id="sales-recent-list">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 11: MY STORE / PROFILE
+           ==================================================================== -->
+      <section class="screen" id="screen-profile">
+        <header class="screen-header">
+          <h1 class="screen-title">My Store</h1>
+        </header>
+
+        <!-- Store Profile Hero Card -->
+        <div class="store-profile-hero">
+          <div class="store-avatar-box" aria-hidden="true">&#127978;</div>
+          <div class="store-profile-info">
+            <h2 id="prof-store-name" class="store-title">Sharma Store</h2>
+            <p id="prof-store-phone" class="store-phone">9876543210</p>
+          </div>
+          <button class="btn-edit-pill" id="btn-edit-store" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            Edit
+          </button>
+        </div>
+
+        <!-- Profile Menu List -->
+        <div class="menu-list-card">
+          <button class="menu-item" id="menu-store-details" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+              </div>
+              <span>Store Details</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-manage-products" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"/>
+                  <rect x="14" y="3" width="7" height="7"/>
+                  <rect x="14" y="14" width="7" height="7"/>
+                  <rect x="3" y="14" width="7" height="7"/>
+                </svg>
+              </div>
+              <span>Manage Products</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-sales-history" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+              </div>
+              <span>Sales History</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-expiry-alerts" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              </div>
+              <span>Expiry Alerts</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-system-health" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+              </div>
+              <span>System &amp; Database Health</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-settings" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </div>
+              <span>Settings</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item" id="menu-help" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <span>Help &amp; Support</span>
+            </div>
+            <span class="chevron">&rsaquo;</span>
+          </button>
+
+          <button class="menu-item logout" id="menu-logout" type="button">
+            <div class="menu-item-left">
+              <div class="menu-item-icon red">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </div>
+              <span>Logout</span>
+            </div>
+            <span class="chevron red">&rsaquo;</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SCREEN 12: BRAND ART / PROMO SPLASH
+           ==================================================================== -->
+      <section class="screen" id="screen-branding">
+        <div class="branding-wrap">
+          <div class="branding-logo-box">
+            <img src="assets/logo.svg" alt="ExpiryMitra" class="branding-logo">
+          </div>
+          <div class="branding-art-box">
+            <img src="assets/shopkeeper.svg" alt="Smart shopkeeper" class="branding-hero-img">
+          </div>
+          <h2 class="branding-headline">Smart inventory. Less waste. Happier businesses.</h2>
+          <p class="branding-sub">Batch wisdom with OCR &amp; AI intelligence at your fingertips.</p>
+          <button class="btn-primary" id="btn-branding-enter" type="button" style="max-width: 280px; margin: 0 auto;">
+            Go to Dashboard &rarr;
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar (Fixed at bottom on primary screens) -->
+    <nav class="bottom-nav" id="bottom-nav" aria-label="Bottom Navigation">
+      <button class="nav-item active" data-nav="dashboard" type="button">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span class="nav-label">Home</span>
+      </button>
+
+      <button class="nav-item" data-nav="inventory" type="button">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+          <line x1="12" y1="22.08" x2="12" y2="12"/>
+        </svg>
+        <span class="nav-label">Inventory</span>
+      </button>
+
+      <!-- Center Raised Floating Scan Button -->
+      <button class="nav-scan-btn" id="btn-main-scan" type="button" aria-label="Scan barcode or product">
+        <svg class="scan-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+          <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+          <line x1="4" y1="12" x2="20" y2="12" stroke="#FFFFFF" stroke-width="2.5"/>
+        </svg>
+      </button>
+
+      <button class="nav-item" data-nav="alerts" type="button">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="nav-label">Alerts</span>
+      </button>
+
+      <button class="nav-item" data-nav="profile" type="button">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span class="nav-label">Profile</span>
+      </button>
+    </nav>
+
+    <!-- Modal Dialogs -->
+    <!-- Edit Product Modal -->
+    <div class="modal-overlay" id="modal-edit-product" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-edit-title">Edit Product</h2>
+          <button class="modal-close-btn" id="btn-close-edit-modal" type="button" aria-label="Close modal">&times;</button>
+        </div>
+        <form id="form-edit-product" onsubmit="return false;">
+          <input type="hidden" id="edit-prod-id">
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="edit-prod-name">Product Name</label>
+            <input type="text" id="edit-prod-name" class="input-field">
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="edit-prod-qty">Quantity</label>
+              <input type="number" id="edit-prod-qty" class="input-field">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="edit-prod-expiry">Expiry Date</label>
+              <input type="date" id="edit-prod-expiry" class="input-field">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="edit-prod-batch">Batch</label>
+              <input type="text" id="edit-prod-batch" class="input-field">
+            </div>
+            <div class="form-group-compact">
+              <label class="form-compact-label" for="edit-prod-threshold">Min Threshold</label>
+              <input type="number" id="edit-prod-threshold" class="input-field">
+            </div>
+          </div>
+          <button class="btn-primary" id="btn-save-edit-prod" type="button" style="margin-top: 10px;">Save Changes</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Stock Modal -->
+    <div class="modal-overlay" id="modal-add-stock" role="dialog" aria-modal="true" aria-labelledby="modal-stock-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-stock-title">Add Stock</h2>
+          <button class="modal-close-btn" id="btn-close-stock-modal" type="button" aria-label="Close modal">&times;</button>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <p id="stock-modal-prod-name" style="font-size: 15px; font-weight: 700; color: var(--navy);">Maggi Noodles</p>
+          <p id="stock-modal-current" style="font-size: 13px; color: var(--navy-muted); margin-top: 2px;">Current Stock: 50 units</p>
+        </div>
+        <div class="form-group-compact">
+          <label class="form-compact-label" for="add-stock-units">Units to Add</label>
+          <input type="number" id="add-stock-units" class="input-field" value="10" min="1">
+        </div>
+        <button class="btn-primary" id="btn-confirm-add-stock" type="button">Update Stock</button>
+      </div>
+    </div>
+
+    <!-- Edit Store Details Modal -->
+    <div class="modal-overlay" id="modal-store-details" role="dialog" aria-modal="true" aria-labelledby="modal-store-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-store-title">Store Details</h2>
+          <button class="modal-close-btn" id="btn-close-store-modal" type="button" aria-label="Close modal">&times;</button>
+        </div>
+        <form id="form-store-details" onsubmit="return false;">
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="store-edit-name">Store Name</label>
+            <input type="text" id="store-edit-name" class="input-field" value="Sharma Store">
+          </div>
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="store-edit-phone">Phone Number</label>
+            <input type="text" id="store-edit-phone" class="input-field" value="9876543210">
+          </div>
+          <div class="form-group-compact">
+            <label class="form-compact-label" for="store-edit-address">Address</label>
+            <input type="text" id="store-edit-address" class="input-field" value="Shop No. 4, Market Complex">
+          </div>
+          <button class="btn-primary" id="btn-save-store-details" type="button" style="margin-top: 10px;">Save Store Profile</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- System Health & Database Modal -->
+    <div class="modal-overlay" id="modal-health" role="dialog" aria-modal="true" aria-labelledby="modal-health-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-health-title">System &amp; Database Status</h2>
+          <button class="modal-close-btn" id="btn-close-health-modal" type="button" aria-label="Close modal">&times;</button>
+        </div>
+        <div id="health-content" style="font-size: 13px; line-height: 1.6; color: var(--navy);">
+          Loading status...
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="vendor/zxing-browser.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

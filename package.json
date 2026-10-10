@@ -1,0 +1,23 @@
+{
+  "name": "expirymitra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart food and grocery expiry tracking application with OCR, AI, and Firestore",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test --test-concurrency=1 test/backend.test.js test/features.test.js test/api.test.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@zxing/browser": "^0.1.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "firebase-admin": "^14.5.0",
+    "tesseract.js": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

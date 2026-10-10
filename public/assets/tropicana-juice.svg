@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <!-- Tropicana Mixed Fruit Juice Pack -->
+  <rect x="26" y="24" width="48" height="68" rx="6" fill="#F97316" />
+  <polygon points="26,24 50,10 74,24" fill="#FB923C" />
+  <rect x="42" y="5" width="16" height="6" rx="2" fill="#15803D" />
+  <!-- White Brand Panel -->
+  <rect x="26" y="36" width="48" height="32" fill="#FFFFFF" />
+  <text x="50" y="49" font-family="-apple-system, sans-serif" font-weight="900" font-size="8.5" fill="#15803D" text-anchor="middle">Tropicana</text>
+  <text x="50" y="59" font-family="-apple-system, sans-serif" font-weight="700" font-size="6.5" fill="#EA580C" text-anchor="middle">100% JUICE</text>
+  <!-- Orange / Fruit slice -->
+  <circle cx="50" cy="78" r="8" fill="#FBBF24" />
+  <circle cx="50" cy="78" r="6" fill="#F97316" />
+</svg>

@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+*.log
+*.zip
+data/inventory.json
+data/scan_history.json
+data/categories.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+.DS_Store
+Thumbs.db

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <!-- Mother Dairy Classic Dahi Cup -->
+  <path d="M 24 30 L 32 82 Q 50 86 68 82 L 76 30 Z" fill="#0284C7" />
+  <!-- Cup Lid Rim -->
+  <ellipse cx="50" cy="30" rx="27" ry="9" fill="#38BDF8" />
+  <ellipse cx="50" cy="28" rx="25" ry="7" fill="#E0F2FE" />
+  <!-- White Brand Label -->
+  <path d="M 28 44 Q 50 48 72 44 L 69 66 Q 50 70 31 66 Z" fill="#FFFFFF" />
+  <text x="50" y="54" font-family="-apple-system, sans-serif" font-weight="800" font-size="6.5" fill="#0369A1" text-anchor="middle">MOTHER DAIRY</text>
+  <text x="50" y="62" font-family="-apple-system, sans-serif" font-weight="800" font-size="7" fill="#0284C7" text-anchor="middle">DAHI</text>
+</svg>
