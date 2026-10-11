@@ -11,6 +11,69 @@ function hasUsableDate(candidates) {
 }
 
 function hasUsableExpiryDate(candidates) {
+  
+function inferDateRolesByChronology(candidates) {
+  // Never override an already usable expiry date.
+  if (hasUsableExpiryDate(candidates)) {
+    return candidates;
+  }
+
+  // Use only clear, full dates—not batch numbers or calculated dates.
+  const dateCandidates = candidates.filter(
+    (item) =>
+      item.date_type !== "batch_number" &&
+      item.normalized_date &&
+      /^\d{4}-\d{2}-\d{2}$/.test(item.normalized_date) &&
+      !item.derived &&
+      (
+        item.precision === "day" ||
+        item.date_convention === "gs1_day_00_end_of_month"
+      )
+  );
+
+  const uniqueDates = [
+    ...new Set(dateCandidates.map((item) => item.normalized_date)),
+  ].sort();
+
+  // Do not guess unless exactly two different dates were detected.
+  if (uniqueDates.length !== 2) {
+    return candidates;
+  }
+
+  const [earlierDate, laterDate] = uniqueDates;
+  const now = new Date();
+  const today =
+    `${now.getFullYear()}-` +
+    `${String(now.getMonth() + 1).padStart(2, "0")}-` +
+    `${String(now.getDate()).padStart(2, "0")}`;
+
+  // We need one date strictly before today and one strictly after today.
+  if (!(earlierDate < today && laterDate > today)) {
+    return candidates;
+  }
+
+  return candidates.map((item) => {
+    if (
+      item.date_type === "batch_number" ||
+      !uniqueDates.includes(item.normalized_date)
+    ) {
+      return item;
+    }
+
+    return {
+      ...item,
+      date_type:
+        item.normalized_date === earlierDate
+          ? "manufacturing_date"
+          : "expiry_date",
+      uncertain: false,
+      conflict: false,
+      inferred_by_chronology: true,
+      reason: "Inferred from date order. Confirm before saving.",
+    };
+  });
+}
+
   return candidates.some((item) => ["expiry_date", "best_before_date"].includes(item.date_type) && item.normalized_date && !item.uncertain && !item.conflict);
 }
 
@@ -89,8 +152,13 @@ async function extractDates({ barcode = "", image, imageVariants = [] } = {}) {
     }
   }
 
-  const candidates = mergeCandidates(gs1Candidates, ocrCandidates, geminiResult.candidates);
-  const usable = candidates.some((candidate) => candidate.date_type !== "batch_number" && candidate.normalized_date);
+const candidates = inferDateRolesByChronology(
+  mergeCandidates(
+    gs1Candidates,
+    ocrCandidates,
+    geminiResult.candidates || []
+  )
+);
   const timings = {
     ocr_attempts: ocrTimings,
     date_parsing_ms: Math.round(parseMs),
