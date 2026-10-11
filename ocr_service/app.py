@@ -4,6 +4,7 @@ import hmac
 import io
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -43,12 +44,14 @@ def get_engine():
 def initialize_model():
     # Warm the singleton once before accepting requests. Model download/startup
     # failures leave /ocr returning a sanitized 503 instead of fake OCR data.
+    started = time.perf_counter()
     try:
         get_engine()
     except Exception:
         app.state.model_ready = False
     else:
         app.state.model_ready = True
+    app.state.model_initialization_ms = round((time.perf_counter() - started) * 1000)
 
 
 def require_service_token(authorization: Optional[str]) -> None:
@@ -132,11 +135,23 @@ async def recognize(file: UploadFile = File(...), authorization: Optional[str] =
     if len(image_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image exceeds the 8 MB limit")
 
+    preprocessing_started = time.perf_counter()
     image_path = preprocess_image(image_bytes)
+    preprocessing_ms = round((time.perf_counter() - preprocessing_started) * 1000)
     try:
+        inference_started = time.perf_counter()
         results = get_engine().predict(str(image_path))
+        inference_ms = round((time.perf_counter() - inference_started) * 1000)
         lines = flatten_results(results)
-        return {"lines": lines, "text": "\n".join(line["text"] for line in lines)}
+        return {
+            "lines": lines,
+            "text": "\n".join(line["text"] for line in lines),
+            "timings": {
+                "preprocessing_ms": preprocessing_ms,
+                "inference_ms": inference_ms,
+                "model_initialization_ms": getattr(app.state, "model_initialization_ms", None),
+            },
+        }
     except HTTPException:
         raise
     except Exception as exc:

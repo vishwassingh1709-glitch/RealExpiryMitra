@@ -7,11 +7,33 @@
  */
 
 const { isValidImagePayload } = require("../middleware/validate.middleware");
+const { performance } = require("node:perf_hooks");
+const path = require("node:path");
 let Tesseract;
 try {
   Tesseract = require("tesseract.js");
 } catch (_) {
   // Graceful fallback if tesseract not available
+}
+
+// Tesseract.recognize() creates and tears down an OCR worker on each call.
+// Keep one initialized worker per Node process and queue requests through it.
+let tesseractWorkerPromise = null;
+let tesseractQueue = Promise.resolve();
+
+function getTesseractWorker() {
+  if (!tesseractWorkerPromise) {
+    const lang = process.env.OCR_LANGUAGE || "eng";
+    const langPath = path.resolve(__dirname, "../../");
+    tesseractWorkerPromise = Tesseract.createWorker(lang, undefined, {
+      langPath,
+      errorHandler: () => console.warn("[Tesseract warn] worker reported an error")
+    }).catch((error) => {
+      tesseractWorkerPromise = null;
+      throw error;
+    });
+  }
+  return tesseractWorkerPromise;
 }
 
 class OcrError extends Error {
@@ -96,6 +118,7 @@ async function callOcrSpaceApi(image) {
   }
 
   const timeoutMs = getTimeoutMs();
+  const started = performance.now();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -141,8 +164,9 @@ async function callOcrSpaceApi(image) {
       const parsedText = data.ParsedResults.map((r) => r.ParsedText || "").join("\n").trim();
       return {
         rawText: parsedText,
-        confidence: 0.92,
-        source: "ocr_space"
+        confidence: null,
+        source: "ocr_space",
+        timings: { inference_ms: Math.round(performance.now() - started) }
       };
     }
 
@@ -165,6 +189,7 @@ async function callPaddleOcrService(image) {
   const timeoutMs = Math.min(getTimeoutMs(), Number(process.env.PADDLE_OCR_TIMEOUT_MS) || 20000);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const started = performance.now();
   try {
     const imageBuffer = extractImageBuffer(image);
     const mime = /^data:(image\/(?:jpeg|png|webp));base64,/i.exec(image)?.[1] || "image/jpeg";
@@ -184,8 +209,9 @@ async function callPaddleOcrService(image) {
     return {
       rawText: lines.map((line) => line.text).join("\n"),
       lines,
-      confidence: scoredLines.length ? scoredLines.reduce((sum, line) => sum + line.confidence, 0) / scoredLines.length : 0,
-      source: "paddleocr"
+      confidence: scoredLines.length ? scoredLines.reduce((sum, line) => sum + line.confidence, 0) / scoredLines.length : null,
+      source: "paddleocr",
+      timings: { inference_ms: Math.round(performance.now() - started), ...(payload.timings || {}) }
     };
   } catch (error) {
     if (error.name === "AbortError") throw new OcrError("PaddleOCR request timed out", 504, true);
@@ -210,8 +236,6 @@ function extractImageBuffer(imagePayload) {
 /**
  * Runs local OCR using Tesseract.js.
  */
-const path = require("path");
-
 async function callTesseract(image) {
   if (!Tesseract) {
     throw new OcrError("Tesseract.js is not available in the current environment", 500, false);
@@ -219,27 +243,40 @@ async function callTesseract(image) {
 
   const timeoutMs = getTimeoutMs();
   const imageBuffer = extractImageBuffer(image);
-
-  const tesseractPromise = (async () => {
-    const lang = process.env.OCR_LANGUAGE || "eng";
-    const localDataPath = path.resolve(__dirname, "../../");
-    const options = {
-      langPath: localDataPath,
-      errorHandler: (e) => console.warn("[Tesseract warn]", e)
-    };
-    const { data } = await Tesseract.recognize(imageBuffer, lang, options);
+  const queuedAt = performance.now();
+  const ocrPromise = tesseractQueue.then(async () => {
+    const workerInitStarted = performance.now();
+    // Requests that expired while queued should not consume CPU later.
+    if (performance.now() - queuedAt >= timeoutMs) {
+      throw new OcrError("Tesseract OCR processing timed out", 504, true);
+    }
+    const worker = await getTesseractWorker();
+    const initializationMs = performance.now() - workerInitStarted;
+    const inferenceStarted = performance.now();
+    const { data } = await worker.recognize(imageBuffer);
     return {
       rawText: (data && data.text ? data.text : "").trim(),
-      confidence: data && typeof data.confidence === "number" ? Math.round(data.confidence) / 100 : 0.85,
-      source: "tesseract"
+      confidence: data && typeof data.confidence === "number" ? Math.round(data.confidence) / 100 : null,
+      source: "tesseract",
+      timings: {
+        queue_ms: Math.round(Math.max(0, inferenceStarted - queuedAt - initializationMs)),
+        initialization_ms: Math.round(initializationMs),
+        inference_ms: Math.round(performance.now() - inferenceStarted)
+      }
     };
-  })();
+  });
+  // A failed scan must not poison the process-wide queue.
+  tesseractQueue = ocrPromise.catch(() => {});
 
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Tesseract OCR processing timed out")), timeoutMs)
-  );
-
-  return Promise.race([tesseractPromise, timeoutPromise]);
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new OcrError("Tesseract OCR processing timed out", 504, true)), timeoutMs);
+  });
+  try {
+    return await Promise.race([ocrPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -275,6 +312,7 @@ async function extractText(image) {
 
   let result;
   let ocrError = null;
+  const providerStarted = performance.now();
 
   // An explicitly configured PaddleOCR service is preferred. Retain the
   // existing OCR.space/Tesseract providers as graceful fallbacks.
@@ -283,7 +321,7 @@ async function extractText(image) {
       result = await callPaddleOcrService(image);
     } catch (err) {
       ocrError = err;
-      console.warn(`[OCR] PaddleOCR unavailable (${err.message}); trying the configured fallback.`);
+      console.warn("[OCR] PaddleOCR unavailable; trying the configured fallback.");
     }
   }
 
@@ -292,13 +330,13 @@ async function extractText(image) {
       result = await callOcrSpaceApi(image);
     } catch (err) {
       ocrError = err;
-      console.warn(`[OCR] OCR.space failed: ${err.message}. Attempting Tesseract fallback...`);
+      console.warn("[OCR] OCR.space failed; attempting Tesseract fallback.");
       if (Tesseract) {
         try {
           result = await callTesseract(image);
           ocrError = null;
         } catch (tessErr) {
-          console.error(`[OCR] Tesseract fallback failed: ${tessErr.message}`);
+          console.error("[OCR] Tesseract fallback failed.");
         }
       }
     }
@@ -308,7 +346,7 @@ async function extractText(image) {
       result = await callTesseract(image);
     } catch (err) {
       ocrError = err;
-      console.error(`[OCR] Tesseract failed: ${err.message}`);
+      console.error("[OCR] Tesseract failed.");
     }
   }
 
@@ -328,9 +366,13 @@ async function extractText(image) {
   return {
     rawText: result.rawText,
     normalizedText,
-    confidence: result.confidence ?? 0.85,
+    confidence: result.confidence ?? null,
     source: result.source,
-    lines: result.lines
+    lines: result.lines,
+    timings: {
+      ...(result.timings || {}),
+      provider_ms: Math.round(performance.now() - providerStarted)
+    }
   };
 }
 
@@ -340,6 +382,7 @@ module.exports = {
   callOcrSpaceApi,
   callPaddleOcrService,
   callTesseract,
+  getTesseractWorker,
   isImageData,
   OcrError
 };

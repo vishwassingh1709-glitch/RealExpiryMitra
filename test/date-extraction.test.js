@@ -86,6 +86,29 @@ test("OCR label results remain review candidates and never auto-confirm a record
   }
 });
 
+test("manufacturing-only OCR triggers the enhanced-image retry before treating expiry scanning as successful", async () => {
+  const oldGeminiKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  let calls = 0;
+  mockOcr = async (image) => {
+    calls += 1;
+    const rawText = image.endsWith("original") ? "MFG 13/05/2026" : "EXP 14/06/2027";
+    return { rawText, normalizedText: rawText, source: "tesseract" };
+  };
+  try {
+    const result = await extractDates({
+      image: "data:image/jpeg;base64,original",
+      imageVariants: ["data:image/jpeg;base64,enhanced"]
+    });
+    assert.equal(calls, 2);
+    assert.equal(result.candidates.find((item) => item.date_type === "manufacturing_date")?.normalized_date, "2026-05-13");
+    assert.equal(result.candidates.find((item) => item.date_type === "expiry_date")?.normalized_date, "2027-06-14");
+    assert.equal(result.timings.ocr_attempts.length, 2);
+  } finally {
+    if (oldGeminiKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldGeminiKey;
+  }
+});
+
 test("ambiguous OCR prompts Gemini; Gemini values remain suggestions and disagreements are flagged", async () => {
   const oldGeminiKey = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = "test-only";
@@ -126,6 +149,27 @@ test("PaddleOCR bridge forwards image and service token, preserving returned tex
     global.fetch = oldFetch;
     if (oldUrl === undefined) delete process.env.PADDLE_OCR_URL; else process.env.PADDLE_OCR_URL = oldUrl;
     if (oldToken === undefined) delete process.env.PADDLE_OCR_TOKEN; else process.env.PADDLE_OCR_TOKEN = oldToken;
+  }
+});
+
+test("OCR provider without confidence metadata does not receive a fabricated confidence score", async () => {
+  const oldProvider = process.env.OCR_PROVIDER;
+  const oldKey = process.env.OCR_API_KEY;
+  const oldPaddleUrl = process.env.PADDLE_OCR_URL;
+  const oldFetch = global.fetch;
+  process.env.OCR_PROVIDER = "ocr_space";
+  process.env.OCR_API_KEY = "test-only";
+  delete process.env.PADDLE_OCR_URL;
+  global.fetch = async () => ({ ok: true, json: async () => ({ ParsedResults: [{ ParsedText: "EXP 08/2027" }] }) });
+  try {
+    const result = await ocrService.extractText("data:image/jpeg;base64,aGVsbG8=");
+    assert.equal(result.rawText, "EXP 08/2027");
+    assert.equal(result.confidence, null);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldProvider === undefined) delete process.env.OCR_PROVIDER; else process.env.OCR_PROVIDER = oldProvider;
+    if (oldKey === undefined) delete process.env.OCR_API_KEY; else process.env.OCR_API_KEY = oldKey;
+    if (oldPaddleUrl === undefined) delete process.env.PADDLE_OCR_URL; else process.env.PADDLE_OCR_URL = oldPaddleUrl;
   }
 });
 

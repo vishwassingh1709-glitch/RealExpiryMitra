@@ -30,6 +30,8 @@ const state = {
   currentLookupPhoto: null,
   dateLabelImage: null,
   dateLabelImages: null,
+  datePhotoPreparationMs: null,
+  dateCaptureMs: null,
   dateExtraction: null,
   dateExtractionRequestId: 0,
   dateExtractionController: null,
@@ -1082,8 +1084,10 @@ async function selectDateLabelPhoto(file) {
   if (status) status.textContent = "Preparing photo…";
   if (candidates) candidates.replaceChildren();
   try {
+    const preparationStarted = performance.now();
     const images = await prepareDateLabelImages(file);
     if (requestId !== state.dateExtractionRequestId) return;
+    state.datePhotoPreparationMs = Math.round(performance.now() - preparationStarted);
     state.dateLabelImages = images;
     state.dateLabelImage = state.dateLabelImages.original;
     const preview = document.getElementById("date-label-preview");
@@ -1113,7 +1117,9 @@ async function captureDateLabelFromLiveCamera() {
   if (status) status.textContent = "Hold the printed date steady…";
   await new Promise((resolve) => setTimeout(resolve, 350));
   if (state.currentScreen !== "screen-add-product" || !state.cameraStream) return;
+  const captureStarted = performance.now();
   const image = capturePackagePhoto(video, 1600, 0.88);
+  state.dateCaptureMs = Math.round(performance.now() - captureStarted);
   if (!image) {
     if (status) status.textContent = "Could not capture this frame. Reposition the package and try again.";
     return;
@@ -1145,6 +1151,7 @@ async function readDateLabelPhoto() {
     timedOut = true;
     controller.abort();
   }, 45000);
+  const requestStarted = performance.now();
   const button = document.getElementById("btn-read-date-label");
   const status = document.getElementById("date-label-status");
   if (button) { button.disabled = true; button.textContent = "Reading label…"; }
@@ -1163,6 +1170,12 @@ async function readDateLabelPhoto() {
     const result = await response.json();
     if (requestId !== state.dateExtractionRequestId) return;
     if (!response.ok) throw new Error(result.message || "Date extraction failed.");
+    result.timings = {
+      ...(result.timings || {}),
+      client_capture_ms: state.dateCaptureMs,
+      client_preparation_ms: state.datePhotoPreparationMs,
+      client_request_ms: Math.round(performance.now() - requestStarted)
+    };
     state.dateExtraction = result;
     renderScanDateCandidates(result);
     const filledCount = populateReadableDateCandidates(result);
