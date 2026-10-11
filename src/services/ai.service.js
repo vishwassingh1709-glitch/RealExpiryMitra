@@ -1,6 +1,5 @@
 
 const { extractText, isImageData } = require("./ocr.service");
-const { identifyDatesFromImage } = require("./ai.service");
 const {
   parseDateLabelText,
   normalizeGeminiFields,
@@ -195,8 +194,8 @@ async function extractDates({
     const geminiStarted = performance.now();
 
     try {
-      const ai = await identifyDatesFromImage(image);
-
+const { identifyDatesFromImage } = require("./ai.service");
+  const ai = await identifyDatesFromImage(image);
       geminiResult = normalizeGeminiFields(
         ai,
         ai.raw_visible_text || ""
