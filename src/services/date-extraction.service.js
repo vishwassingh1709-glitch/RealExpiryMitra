@@ -80,7 +80,8 @@ async function extractDates({ barcode = "", image, imageVariants = [] } = {}) {
     try {
       const ai = await identifyDatesFromImage(image);
       geminiResult = normalizeGeminiFields(ai, ai.raw_visible_text || "");
-    } catch (error) {
+    }
+     catch (error) {
       // OCR and human correction remain available when the optional model fails.
       geminiResult.error = error.name === "AbortError" ? "Gemini request timed out" : "Gemini image interpretation unavailable";
     } finally {

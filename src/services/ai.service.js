@@ -1,378 +1,298 @@
-/**
- * AI & Rule-based Interpretation Service for Product Expiry Labels.
- * Integrates Google Gemini API with fallback to deterministic pattern recognition.
- */
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { parseDate, addMonthsToDate, addDaysToDate } = require("../utils/date.parser");
-const { calculateConfidence } = require("../utils/confidence");
+const { extractText, isImageData } = require("./ocr.service");
+const { identifyDatesFromImage } = require("./ai.service");
+const {
+  parseDateLabelText,
+  normalizeGeminiFields,
+} = require("../utils/date-label.parser");
+const { parseGs1Barcode } = require("../utils/gs1");
+const { performance } = require("node:perf_hooks");
 
-const DATE_PATTERN =
-  "(\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{1,2}[\\s\\-\\/.][A-Za-z]{3,9}[\\s\\-\\/.][0-9]{2,4}|[A-Za-z]{3,9}[\\s\\-\\/.][0-9]{2,4}|\\d{4}[\\/\\-]\\d{1,2}[\\/\\-]\\d{1,2})";
+const FALLBACK_MESSAGE =
+  "We couldn't read the printed date clearly. Please retake the photo or enter the date manually.";
 
-const MFG_REGEX = new RegExp(
-  "(?:MANUFACTURING\\s+DATE|MANUFACTURED\\s+ON|MANUFACTURED|DATE\\s+OF\\s+MFG|MFD\\s+DATE|MFD|MFG|PKD|PACKED)\\b[:\\s.]*" +
-    DATE_PATTERN,
-  "i"
-);
+function hasUsableDate(candidates) {
+  return candidates.some(
+    (item) =>
+      item.date_type !== "batch_number" &&
+      item.normalized_date &&
+      !item.uncertain &&
+      !item.conflict
+  );
+}
 
-const EXP_REGEX = new RegExp(
-  "(?:BEST\\s+BEFORE\\s+DATE|BEST\\s+BEFORE|BEST\\s+BY|EXPIRY\\s+DATE|EXP\\s+DATE|EXPIRY|USE\\s+BY|EXP)\\b[:\\s.]*" +
-    DATE_PATTERN,
-  "i"
-);
+function hasUsableExpiryDate(candidates) {
+  return candidates.some(
+    (item) =>
+      ["expiry_date", "best_before_date"].includes(item.date_type) &&
+      item.normalized_date &&
+      !item.uncertain &&
+      !item.conflict
+  );
+}
 
-const RELATIVE_EXP_REGEX =
-  /(?:BEST\s+BEFORE|USE\s+WITHIN|CONSUME\s+WITHIN)[:\s]*(\d{1,2})\s*(MONTHS?|DAYS?|WEEKS?)\s*(?:FROM\s+(?:MFG|MFD|PACKAGING|PKD|DATE\s+OF\s+MFG))?/i;
+function mergeCandidates(...groups) {
+  const merged = [];
 
-const BATCH_REGEX =
-  /(?:BATCH\s*(?:NO|NUMBER)?|LOT\s*(?:NO|NUMBER)?|B\.NO|BN)\b[:\s.]*([A-Za-z0-9\-_]{2,20})/i;
+  for (const candidate of groups.flat()) {
+    const duplicate = merged.find(
+      (item) =>
+        item.date_type === candidate.date_type &&
+        item.normalized_date === candidate.normalized_date &&
+        item.raw_value === candidate.raw_value
+    );
 
-function getAiTimeoutMs() {
-  const parsed = Number(process.env.AI_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8000;
+    if (!duplicate) merged.push(candidate);
+  }
+
+  for (const candidate of merged) {
+    const alternatives = merged.filter(
+      (item) =>
+        item !== candidate &&
+        item.date_type === candidate.date_type &&
+        ((item.normalized_date &&
+          candidate.normalized_date &&
+          item.normalized_date !== candidate.normalized_date) ||
+          (!item.normalized_date &&
+            !candidate.normalized_date &&
+            item.raw_value !== candidate.raw_value))
+    );
+
+    if (alternatives.length) candidate.conflict = true;
+  }
+
+  return merged;
 }
 
 /**
- * Deterministic regex-based date and batch parser.
+ * Redact common API-key formats and URL query secrets before
+ * diagnostic logging. Details are never returned to the browser.
  */
-function interpretExpiryDeterministic(rawText) {
-  if (typeof rawText !== "string" || !rawText.trim()) {
-    return {
-      expiry_date: null,
-      mfg_date: null,
-      batch: null,
-      confidence: 0,
-      warnings: ["No text provided for analysis"],
-      source: "deterministic_parser"
-    };
-  }
-
-  const text = rawText.trim();
-  const warnings = [];
-  let mfgDate = null;
-  let expiryDate = null;
-  let batch = null;
-  let hasMfgLabel = false;
-  let hasExpiryLabel = false;
-
-  // 1. Check for Manufacturing Date
-  const mfgMatch = text.match(MFG_REGEX);
-  if (mfgMatch && mfgMatch[1]) {
-    hasMfgLabel = true;
-    mfgDate = parseDate(mfgMatch[1], { isExpiry: false });
-  }
-
-  // 2. Check for Expiry Date
-  const expMatch = text.match(EXP_REGEX);
-  if (expMatch && expMatch[1]) {
-    hasExpiryLabel = true;
-    expiryDate = parseDate(expMatch[1], { isExpiry: true });
-  }
-
-  // 3. Fallback: line-by-line inspection if not matched in single regex
-  if (!expiryDate) {
-    const lines = text.split("\n");
-    for (const line of lines) {
-      const lineExp = line.match(EXP_REGEX);
-      if (lineExp && lineExp[1]) {
-        hasExpiryLabel = true;
-        expiryDate = parseDate(lineExp[1], { isExpiry: true });
-        if (expiryDate) break;
-      }
-    }
-  }
-
-  if (!mfgDate) {
-    const lines = text.split("\n");
-    for (const line of lines) {
-      const lineMfg = line.match(MFG_REGEX);
-      if (lineMfg && lineMfg[1]) {
-        hasMfgLabel = true;
-        mfgDate = parseDate(lineMfg[1], { isExpiry: false });
-        if (mfgDate) break;
-      }
-    }
-  }
-
-  // 4. Check for Relative Expiry (e.g. "BEST BEFORE 6 MONTHS FROM MFG")
-  if (!expiryDate) {
-    const relMatch = text.match(RELATIVE_EXP_REGEX);
-    if (relMatch && relMatch[1] && relMatch[2]) {
-      hasExpiryLabel = true;
-      const count = Number(relMatch[1]);
-      const unit = relMatch[2].toUpperCase();
-      if (mfgDate) {
-        if (unit.startsWith("MONTH")) {
-          expiryDate = addMonthsToDate(mfgDate, count);
-        } else if (unit.startsWith("DAY")) {
-          expiryDate = addDaysToDate(mfgDate, count);
-        } else if (unit.startsWith("WEEK")) {
-          expiryDate = addDaysToDate(mfgDate, count * 7);
-        }
-      } else {
-        warnings.push(`Relative expiry found ("${count} ${unit}") but manufacturing date was not detected.`);
-      }
-    }
-  }
-
-  // 5. Batch Number
-  const batchMatch = text.match(BATCH_REGEX);
-  if (batchMatch && batchMatch[1]) {
-    const candidate = batchMatch[1].trim().toUpperCase();
-    if (!candidate.includes("/") && candidate.length >= 2) {
-      batch = candidate;
-    }
-  }
-
-  // Consistency check
-  let datesConsistent = true;
-  if (mfgDate && expiryDate && expiryDate < mfgDate) {
-    datesConsistent = false;
-    warnings.push("Extracted expiry date is earlier than manufacturing date.");
-  }
-
-  if (!expiryDate) {
-    warnings.push("Expiry date could not be parsed definitively.");
-  }
-
-  const confidence = calculateConfidence({
-    hasExpiryLabel,
-    hasExpiryDate: Boolean(expiryDate),
-    hasMfgLabel,
-    hasMfgDate: Boolean(mfgDate),
-    hasBatch: Boolean(batch),
-    datesConsistent,
-    isAmbiguous: !expiryDate || !datesConsistent
-  });
+function getSafeGeminiErrorDetails(error) {
+  const message = String(error?.message || "Unknown Gemini error")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]")
+    .replace(/gsk_[A-Za-z0-9_-]+/g, "[REDACTED]")
+    .replace(/key=[^&\s]+/gi, "key=[REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+    .slice(0, 300);
 
   return {
-    mfg_date: mfgDate,
-    expiry_date: expiryDate,
-    batch,
-    confidence,
-    warnings,
-    source: "deterministic_parser"
+    name: String(error?.name || "Error").slice(0, 80),
+    status:
+      error?.status ??
+      error?.statusCode ??
+      error?.response?.status ??
+      null,
+    message,
   };
 }
 
-/**
- * Calls Google Gemini API to interpret OCR text.
- */
-async function callGeminiApi(rawText, productInfo = {}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
+async function extractDates({
+  barcode = "",
+  image,
+  imageVariants = [],
+} = {}) {
+  const requestStarted = performance.now();
+
+  if (!isImageData(image)) {
+    return {
+      status: "invalid_image",
+      message:
+        "Upload a valid close-up image of the printed date label.",
+    };
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: "application/json"
+  const gs1Candidates = parseGs1Barcode(barcode);
+  const ocrRuns = [
+    image,
+    ...imageVariants.slice(0, 1).filter(isImageData),
+  ];
+
+  const ocrCandidates = [];
+  const rawTexts = [];
+  const ocrLines = [];
+  const ocrTimings = [];
+  const ocrWarnings = [];
+
+  let parseMs = 0;
+  let ocrSource = null;
+
+  for (let index = 0; index < ocrRuns.length; index += 1) {
+    const attemptStarted = performance.now();
+
+    try {
+      const result = await extractText(ocrRuns[index]);
+
+      ocrSource ||= result.source;
+
+      ocrTimings.push({
+        attempt: index + 1,
+        source: result.source || "unknown",
+        elapsed_ms: Math.round(performance.now() - attemptStarted),
+        ...(result.timings || {}),
+      });
+
+      if (Array.isArray(result.lines)) {
+        ocrLines.push(...result.lines);
+      }
+
+      if (result.rawText) {
+        rawTexts.push(result.rawText);
+
+        const parseStarted = performance.now();
+
+        const parsed = parseDateLabelText(
+          result.normalizedText || result.rawText,
+          result.source || "ocr"
+        );
+
+        parseMs += performance.now() - parseStarted;
+        ocrCandidates.push(...parsed.candidates);
+      }
+    } catch (error) {
+      ocrWarnings.push(
+        error.statusCode === 504 || error.name === "AbortError"
+          ? "OCR request timed out"
+          : "OCR provider unavailable"
+      );
+
+      const provider = process.env.PADDLE_OCR_URL
+        ? "paddleocr"
+        : process.env.OCR_PROVIDER ||
+          (process.env.OCR_API_KEY ? "ocr_space" : "tesseract");
+
+      ocrTimings.push({
+        attempt: index + 1,
+        source: provider,
+        elapsed_ms: Math.round(performance.now() - attemptStarted),
+        failed: true,
+      });
     }
-  });
 
-  const prompt = `You are a food safety AI specialist analyzing OCR text extracted from food and grocery product packaging.
-Product context (if known): Name: "${productInfo.name || ""}", Brand: "${productInfo.brand || ""}".
-
-Analyze this OCR text:
----
-${rawText}
----
-
-Your task:
-1. Identify the manufacturing or packaging date (MFG, MFD, PKD, PACKED, MANUFACTURED).
-2. Identify the expiry date (EXP, EXPIRY, BEST BEFORE, USE BY, BEST BY).
-3. If there is a relative expiry statement such as "BEST BEFORE X MONTHS FROM MFG", calculate the expiry date ONLY IF the manufacturing date is known.
-4. Extract the batch or lot number if present.
-5. Identify any warnings or ambiguities.
-
-Rules:
-- Format all dates in ISO YYYY-MM-DD.
-- If a date is ambiguous (e.g. 05/06/2026 where day/month cannot be determined with certainty), note the ambiguity in warnings.
-- NEVER invent or guess dates not supported by the OCR text.
-- If expiry date is missing, return null for expiry_date.
-- Return a JSON object with this EXACT structure:
-{
-  "mfg_date": "YYYY-MM-DD" or null,
-  "expiry_date": "YYYY-MM-DD" or null,
-  "batch": "string" or null,
-  "confidence": number between 0.1 and 0.98,
-  "warnings": ["string explanation of any uncertainty"],
-  "notes": "short rationale"
-}`;
-
-  const timeoutMs = getAiTimeoutMs();
-  const generatePromise = (async () => {
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    let cleaned = responseText.trim();
-    if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+    // A manufacturing date alone is not a successful expiry scan.
+    if (hasUsableExpiryDate(mergeCandidates(ocrCandidates))) {
+      break;
     }
-    return JSON.parse(cleaned);
-  })();
+  }
 
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Gemini AI request timed out")), timeoutMs)
+  let geminiResult = {
+    candidates: [],
+    raw_visible_text: "",
+    uncertain_fields: [],
+  };
+
+  const reviewedOcrCandidates = mergeCandidates(ocrCandidates);
+
+  const ocrNeedsHelp =
+    !hasUsableExpiryDate(reviewedOcrCandidates) ||
+    reviewedOcrCandidates.some(
+      (candidate) => candidate.uncertain || candidate.conflict
+    );
+
+  let geminiMs = 0;
+
+  if (ocrNeedsHelp && process.env.GEMINI_API_KEY) {
+    const geminiStarted = performance.now();
+
+    try {
+      const ai = await identifyDatesFromImage(image);
+
+      geminiResult = normalizeGeminiFields(
+        ai,
+        ai.raw_visible_text || ""
+      );
+    } catch (error) {
+      // Log provider diagnostics safely on the backend only.
+      console.error(
+        "[Gemini date extraction failed]",
+        getSafeGeminiErrorDetails(error)
+      );
+
+      geminiResult.error =
+        error?.name === "AbortError"
+          ? "Gemini request timed out"
+          : "Gemini image interpretation unavailable";
+    } finally {
+      geminiMs = performance.now() - geminiStarted;
+    }
+  }
+
+  const candidates = mergeCandidates(
+    gs1Candidates,
+    ocrCandidates,
+    geminiResult.candidates || []
   );
 
-  return Promise.race([generatePromise, timeoutPromise]);
-}
+  const usable = candidates.some(
+    (candidate) =>
+      candidate.date_type !== "batch_number" &&
+      candidate.normalized_date
+  );
 
-/**
- * Identify product details visible in a package photo. This is deliberately a
- * suggestion-only path; barcode association and shopkeeper confirmation remain
- * the responsibility of the product identification workflow.
- */
-async function identifyProductFromImage(imageData, barcode, { signal } = {}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  if (typeof imageData !== "string" || imageData.length > 10 * 1024 * 1024) throw new Error("Product image is missing or too large");
-  const match = imageData.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i);
-  if (!match) throw new Error("Product image must be JPEG, PNG, or WebP data");
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_PRODUCT_MODEL || process.env.GEMINI_MODEL || "gemini-1.5-flash",
-    generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
-  });
-  const prompt = `Identify the single packaged retail product, if clearly visible, in this photo. The barcode decoded from this same package image is ${JSON.stringify(barcode)}. Use visual packaging text and brand marks only. Do not guess missing details and do not infer expiry, manufacturing date, batch, price, or barcode digits. If the photo is a close-up of only a barcode, blurry, ambiguous, or contains multiple plausible products, set product_visible to false. Return JSON only with this shape: {"product_visible":boolean,"name":string|null,"brand":string|null,"category":string|null,"packaging_evidence":string|null,"confidence":number}. Confidence must reflect visible packaging evidence.`;
-  const result = await model.generateContent([
-    { text: prompt },
-    { inlineData: { mimeType: match[1].toLowerCase().replace("jpg", "jpeg"), data: match[2] } }
-  ], { signal, timeout: Number(process.env.PRODUCT_IDENTIFICATION_TIMEOUT_MS || 8000) });
-  let text = result.response.text().trim();
-  if (text.startsWith("```")) text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  const candidate = JSON.parse(text);
-  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
-  const evidence = typeof candidate.packaging_evidence === "string" ? candidate.packaging_evidence.trim() : "";
-  const confidence = Number(candidate.confidence);
-  if (candidate.product_visible !== true || !name || !evidence || !Number.isFinite(confidence) || confidence < 0.65) return null;
-  return {
-    barcode,
-    name: name.slice(0, 180),
-    brand: typeof candidate.brand === "string" ? candidate.brand.trim().slice(0, 100) : "",
-    category: typeof candidate.category === "string" ? candidate.category.trim().slice(0, 100) : "",
-    image_url: null,
-    packaging_evidence: evidence.slice(0, 240),
-    confidence: Math.min(1, Math.max(0, confidence)),
-    source: "gemini_candidate",
-    source_label: "Gemini photo suggestion",
-    verification_status: "unverified"
+  const timings = {
+    ocr_attempts: ocrTimings,
+    date_parsing_ms: Math.round(parseMs),
+    gemini_ms: Math.round(geminiMs),
+    total_service_ms: Math.round(performance.now() - requestStarted),
   };
-}
 
-/** Reads date and lot text from the supplied package-label photo only. */
-async function identifyDatesFromImage(imageData) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  const match = typeof imageData === "string" && imageData.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i);
-  if (!match || imageData.length > 10 * 1024 * 1024) throw new Error("A valid label photo is required");
-  const timeoutMs = Number(process.env.DATE_GEMINI_TIMEOUT_MS || 8000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000);
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
-      generationConfig: { temperature: 0, responseMimeType: "application/json" }
-    });
-    const prompt = `Read only text visibly printed in this date/batch label photograph. Do not use the product name, barcode, typical shelf life, or outside knowledge to infer any date. Preserve printed date precision and wording. If unreadable or uncertain, return null for that field and list it in uncertain_fields. Return JSON only: {"manufacturing_date":string|null,"packaging_date":string|null,"expiry_date":string|null,"best_before_date":string|null,"batch_number":string|null,"raw_visible_text":string,"uncertain_fields":string[]}. Dates must be returned exactly as printed, not normalized or completed. Keep expiry/use-by distinct from best-before and packaging date.`;
-    const result = await model.generateContent([
-      { text: prompt },
-      { inlineData: { mimeType: match[1].toLowerCase().replace("jpg", "jpeg"), data: match[2] } }
-    ], { signal: controller.signal, timeout: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 8000 });
-    let responseText = result.response.text().trim();
-    if (responseText.startsWith("```")) responseText = responseText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    const parsed = JSON.parse(responseText);
-    const fields = ["manufacturing_date", "packaging_date", "expiry_date", "best_before_date", "batch_number"];
-    for (const field of fields) {
-      if (parsed[field] === undefined) parsed[field] = null;
-      if (parsed[field] !== null && typeof parsed[field] !== "string") throw new Error("Invalid Gemini field type");
-      if (typeof parsed[field] === "string") parsed[field] = parsed[field].slice(0, 120);
-    }
-    parsed.raw_visible_text = typeof parsed.raw_visible_text === "string" ? parsed.raw_visible_text.slice(0, 1000) : "";
-    parsed.uncertain_fields = Array.isArray(parsed.uncertain_fields) ? parsed.uncertain_fields.map(String).slice(0, 10) : [];
-    return parsed;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+  // Never log uploaded images, barcode values, or OCR text.
+  console.info(
+    "[Date OCR timing]",
+    JSON.stringify({
+      status: usable ? "review_required" : "manual_entry",
+      ocr_source: ocrSource || "none",
+      attempts: ocrTimings.length,
+      ...timings,
+    })
+  );
 
-/**
- * Main interpretation function with Gemini AI and deterministic parser fallback.
- */
-async function interpretExpiry(rawText, productInfo = {}) {
-  if (typeof rawText !== "string" || !rawText.trim()) {
-    return {
-      expiry_date: null,
-      mfg_date: null,
-      batch: null,
-      confidence: 0,
-      warnings: ["Empty text"],
-      source: "none"
-    };
-  }
+  return {
+    status: usable ? "review_required" : "manual_entry",
 
-  // 1. Mock mode for unit tests
-  if (process.env.NODE_ENV === "test" && process.env.AI_MODE === "mock") {
-    return interpretExpiryDeterministic(rawText);
-  }
+    message: usable
+      ? "Review each printed date and confirm or correct it before saving."
+      : FALLBACK_MESSAGE,
 
-  // 2. Try Gemini AI if API key is present
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      const aiResponse = await callGeminiApi(rawText, productInfo);
+    candidates,
 
-      // Validate AI returned dates
-      let expiryDate = null;
-      if (aiResponse.expiry_date) {
-        expiryDate = parseDate(aiResponse.expiry_date, { isExpiry: true });
-      }
+    raw_visible_text:
+      geminiResult.raw_visible_text ||
+      rawTexts
+        .filter((text) => !text.startsWith("OCR unavailable:"))
+        .join("\n")
+        .slice(0, 2000),
 
-      let mfgDate = null;
-      if (aiResponse.mfg_date) {
-        mfgDate = parseDate(aiResponse.mfg_date, { isExpiry: false });
-      }
+    sources: {
+      ocr: ocrSource,
+      gemini: geminiResult.candidates?.length
+        ? "gemini_image"
+        : null,
+      gs1: gs1Candidates.length > 0,
+    },
 
-      const warnings = Array.isArray(aiResponse.warnings) ? aiResponse.warnings : [];
-      let confidence = typeof aiResponse.confidence === "number" ? aiResponse.confidence : 0.85;
+    ocr_lines: ocrLines.slice(0, 200),
 
-      // Consistency check on AI result
-      if (mfgDate && expiryDate && expiryDate < mfgDate) {
-        warnings.push("Extracted expiry date cannot be earlier than manufacturing date.");
-        confidence = Math.min(confidence, 0.4);
-      }
+    warnings: [
+      ...ocrWarnings,
+      ...(geminiResult.error ? [geminiResult.error] : []),
+      ...candidates
+        .filter((item) => item.uncertain)
+        .map(
+          (item) =>
+            item.reason || `${item.date_type} needs review`
+        ),
+    ],
 
-      return {
-        mfg_date: mfgDate,
-        expiry_date: expiryDate,
-        batch: aiResponse.batch || null,
-        confidence: Math.round(confidence * 100) / 100,
-        warnings,
-        source: "gemini_ai"
-      };
-    } catch (error) {
-      console.warn(`[AI Service] Gemini call failed (${error.message}). Falling back to deterministic parser.`);
-    }
-  }
-
-  // 3. Fallback to deterministic regex parser
-  return interpretExpiryDeterministic(rawText);
+    requires_confirmation: true,
+    timings,
+  };
 }
 
 module.exports = {
-  interpretExpiry,
-  interpretExpiryDeterministic,
-  callGeminiApi,
-  identifyProductFromImage,
-  identifyDatesFromImage,
-  MFG_REGEX,
-  EXP_REGEX,
-  RELATIVE_EXP_REGEX,
-  BATCH_REGEX
+  extractDates,
+  mergeCandidates,
+  hasUsableDate,
+  hasUsableExpiryDate,
+  FALLBACK_MESSAGE,
 };
