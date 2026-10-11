@@ -921,60 +921,110 @@ function compressProductPhoto(imageData, maxDimension = 960, quality = 0.72) {
 function prepareDateLabelImages(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("The selected photo could not be read."));
+
+    reader.onerror = () => {
+      reject(new Error("The selected photo could not be read."));
+    };
+
     reader.onload = async () => {
       try {
-        const original = await compressProductPhoto(reader.result, 1400, 0.86);
-        if (!original) throw new Error("The selected photo could not be prepared.");
+        // Preserve detail and avoid shrinking and then enlarging the photo.
+        const original = await compressProductPhoto(
+          reader.result,
+          1600,
+          0.92
+        );
+
+        if (!original) {
+          throw new Error("The selected photo could not be prepared.");
+        }
+
         const image = new Image();
-        image.onload = () => {
-          const scale = Math.min(1.25, 1600 / Math.max(image.width, image.height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(image.width * scale));
-          canvas.height = Math.max(1, Math.round(image.height * scale));
-          const context = canvas.getContext("2d", { willReadFrequently: true });
-          context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          const frame = context.getImageData(0, 0, canvas.width, canvas.height);
-          const pixels = frame.data;
-          const width = canvas.width;
-          const height = canvas.height;
-          const gray = new Uint8Array(width * height);
-          const integral = new Uint32Array((width + 1) * (height + 1));
-          let globalSum = 0;
-          for (let y = 0; y < height; y += 1) {
-            let rowSum = 0;
-            for (let x = 0; x < width; x += 1) {
-              const p = (y * width + x) * 4;
-              const value = Math.round(0.299 * pixels[p] + 0.587 * pixels[p + 1] + 0.114 * pixels[p + 2]);
-              gray[y * width + x] = value;
-              rowSum += value;
-              globalSum += value;
-              integral[(y + 1) * (width + 1) + x + 1] = integral[y * (width + 1) + x + 1] + rowSum;
-            }
-          }
-          const mean = globalSum / gray.length;
-          const radius = Math.max(8, Math.round(Math.min(width, height) / 40));
-          for (let y = 0; y < height; y += 1) {
-            for (let x = 0; x < width; x += 1) {
-              const x0 = Math.max(0, x - radius), x1 = Math.min(width, x + radius + 1);
-              const y0 = Math.max(0, y - radius), y1 = Math.min(height, y + radius + 1);
-              const stride = width + 1;
-              const sum = integral[y1 * stride + x1] - integral[y0 * stride + x1] - integral[y1 * stride + x0] + integral[y0 * stride + x0];
-              const localMean = sum / ((x1 - x0) * (y1 - y0));
-              const enhanced = Math.max(0, Math.min(255, (gray[y * width + x] - mean) * 1.35 + mean));
-              const p = (y * width + x) * 4;
-              const output = enhanced < localMean - 8 ? 0 : 255;
-              pixels[p] = pixels[p + 1] = pixels[p + 2] = output;
-              pixels[p + 3] = 255;
-            }
-          }
-          context.putImageData(frame, 0, 0);
-          resolve({ original, enhanced: canvas.toDataURL("image/jpeg", 0.86) });
+
+        image.onerror = () => {
+          reject(
+            new Error("The selected photo could not be decoded.")
+          );
         };
-        image.onerror = () => reject(new Error("The selected photo could not be decoded."));
+
+        image.onload = () => {
+          try {
+            const width = image.naturalWidth || image.width;
+            const height = image.naturalHeight || image.height;
+
+            if (!width || !height) {
+              throw new Error("The photo has invalid dimensions.");
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+
+            const context = canvas.getContext("2d", {
+              willReadFrequently: true
+            });
+
+            if (!context) {
+              throw new Error("Image processing is unavailable.");
+            }
+
+            context.drawImage(image, 0, 0, width, height);
+
+            const frame = context.getImageData(
+              0,
+              0,
+              width,
+              height
+            );
+
+            const pixels = frame.data;
+            const contrast = 1.2;
+
+            // Gentle grayscale contrast enhancement.
+            // Do not force every pixel to pure black or white.
+            for (let i = 0; i < pixels.length; i += 4) {
+              const gray = Math.round(
+                0.299 * pixels[i] +
+                0.587 * pixels[i + 1] +
+                0.114 * pixels[i + 2]
+              );
+
+              const enhanced = Math.max(
+                0,
+                Math.min(
+                  255,
+                  Math.round((gray - 128) * contrast + 128)
+                )
+              );
+
+              pixels[i] = enhanced;
+              pixels[i + 1] = enhanced;
+              pixels[i + 2] = enhanced;
+              // Preserve the original alpha channel.
+            }
+
+            context.putImageData(frame, 0, 0);
+
+            const enhanced = canvas.toDataURL(
+              "image/jpeg",
+              0.92
+            );
+
+            resolve({
+              original,
+              enhanced
+            });
+          } catch (error) {
+            reject(error);
+          }
+        };
+
         image.src = original;
-      } catch (error) { reject(error); }
+      } catch (error) {
+        reject(error);
+      }
     };
+
     reader.readAsDataURL(file);
   });
 }
