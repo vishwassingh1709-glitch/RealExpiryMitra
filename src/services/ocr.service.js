@@ -5,6 +5,7 @@
  * 2. OCR.space API (Cloud OCR service when OCR_API_KEY is configured)
  * 3. Test-only mock mode
  */
+const fs = require("node:fs");
 
 const { isValidImagePayload } = require("../middleware/validate.middleware");
 const { performance } = require("node:perf_hooks");
@@ -21,18 +22,70 @@ try {
 let tesseractWorkerPromise = null;
 let tesseractQueue = Promise.resolve();
 
+
 function getTesseractWorker() {
   if (!tesseractWorkerPromise) {
     const lang = process.env.OCR_LANGUAGE || "eng";
     const langPath = path.resolve(__dirname, "../../");
-    tesseractWorkerPromise = Tesseract.createWorker(lang, undefined, {
-      langPath,
-      errorHandler: () => console.warn("[Tesseract warn] worker reported an error")
-    }).catch((error) => {
+
+    const languages = String(lang)
+      .split(/[+,]/)
+      .map((code) => code.trim())
+      .filter(Boolean);
+
+    const hasCompressedModels = languages.every((code) =>
+      fs.existsSync(path.join(langPath, `${code}.traineddata.gz`))
+    );
+
+    const hasUncompressedModels = languages.every((code) =>
+      fs.existsSync(path.join(langPath, `${code}.traineddata`))
+    );
+
+    const workerOptions = {
+      errorHandler: (error) => {
+        console.warn(
+          "[Tesseract] Worker error:",
+          error?.message || error?.name || "Unknown error"
+        );
+      },
+    };
+
+    if (hasCompressedModels) {
+      // Local language files are gzip-compressed.
+      workerOptions.langPath = langPath;
+      workerOptions.gzip = true;
+
+      console.info("[OCR] Using local compressed language model.");
+    } else if (hasUncompressedModels) {
+      // Local language files are NOT gzip-compressed.
+      workerOptions.langPath = langPath;
+      workerOptions.gzip = false;
+
+      console.info("[OCR] Using local uncompressed language model.");
+    } else {
+      // Fall back to Tesseract.js's default language-data source.
+      // This may require an internet connection during initialization.
+      console.warn(
+        "[OCR] Local language model missing; using default model source."
+      );
+    }
+
+    tesseractWorkerPromise = Tesseract.createWorker(
+      lang,
+      undefined,
+      workerOptions
+    ).catch((error) => {
       tesseractWorkerPromise = null;
+
+      console.error(
+        "[OCR] Worker initialization failed:",
+        error?.message || error?.name || "Unknown error"
+      );
+
       throw error;
     });
   }
+
   return tesseractWorkerPromise;
 }
 
@@ -336,7 +389,10 @@ async function extractText(image) {
           result = await callTesseract(image);
           ocrError = null;
         } catch (tessErr) {
-          console.error("[OCR] Tesseract fallback failed.");
+          console.error(
+  "[OCR] Tesseract fallback failed:",
+  tessErr?.message || tessErr?.name || "Unknown error"
+);
         }
       }
     }
@@ -346,7 +402,10 @@ async function extractText(image) {
       result = await callTesseract(image);
     } catch (err) {
       ocrError = err;
-      console.error("[OCR] Tesseract failed.");
+      console.error(
+  "[OCR] Tesseract failed:",
+  err?.message || err?.name || "Unknown error"
+);
     }
   }
 
